@@ -1,6 +1,5 @@
-# MWS Server Architecture Explained
 
-This is a monorepo divided into separate projects. The entry point is in `packages/mws/src/index.ts`. The entry point imports the `server`, `commander`, and `events` projects. 
+The MWS repo is divided into separate projects in the `packages` folder. The entry point is in `packages/mws/src/index.ts`. The entry point imports the `server`, `commander`, and `events` projects. 
 
 The entire server uses Promises and async functions for pretty much everything. Synchronous file system calls should be avoided as much as possible. 
 
@@ -20,7 +19,9 @@ The `mws` project is the application layer of MWS and ties everything else toget
 
 The `react-admin` package is the Admin UI. It's based on react, and is built automatically when the dev server is enabled. You can find the server route in `packages/mws/src/services/setupDevServer.ts`
 
-If this all sounds a bit confusing, here's all the events that are emitted on a normal startup. 
+## Events
+
+If this all sounds a bit confusing, here are the events that are emitted on a normal startup. 
 
 - `zod.make`  - Emitted by `server` to extend the zod global.
 - `cli.register`  - Emitted by `commander` to register commands.
@@ -33,10 +34,10 @@ These next ones are attachment points for further extension of MWS. They are emi
 - `mws.cache.init.after`
 - `mws.adapter.init.before`
 - `mws.adapter.init.after`
-- `mws.init.before`
-- `mws.init.after`
+- `mws.config.init.before`
+- `mws.config.init.after`
 
-These are emitted by the listen command, either by `mws` or by `server`. 
+Next, these are emitted by the listen command, either by `mws` or by `server`. 
 
 - `listen.router.init`
 - `mws.router.init`
@@ -48,8 +49,9 @@ And finally the event emitted after the command ends.
 
 - `cli.execute.after`
 
-Remember that this is the order the commands start executing in. Some of them are nested. For instance, if I log the event name when it is emitted and time it, this is the output.
+## Event nesting
 
+Some of them are nested. For instance, if I log the event name when it is emitted, and then how long it took when it completes, this is the output (indented for clarity).
 
 ```
 zod.make
@@ -70,10 +72,10 @@ cli.execute.before
   mws.adapter.init.before: 0.007ms
   mws.adapter.init.after
   mws.adapter.init.after: 0.006ms
-  mws.init.before
-  mws.init.before: 0.008ms
-  mws.init.after
-  mws.init.after: 0.009ms
+  mws.config.init.before
+  mws.config.init.before: 0.008ms
+  mws.config.init.after
+  mws.config.init.after: 0.009ms
 cli.execute.before: 1.171s
 
 listen.router.init
