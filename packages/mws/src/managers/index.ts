@@ -2,6 +2,7 @@
 import "./admin-recipes";
 import "./admin-users";
 import "./admin-settings";
+import "./admin-htmx";
 import "./wiki-index";
 import "./user-status";
 

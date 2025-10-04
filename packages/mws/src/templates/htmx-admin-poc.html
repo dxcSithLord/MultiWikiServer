@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users - MWS Admin (HTMX Proof-of-Concept)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .navbar {
+      background: #1976d2;
+      color: white;
+      padding: 1rem 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .navbar h1 {
+      font-size: 1.5rem;
+      display: inline-block;
+    }
+
+    .navbar small {
+      opacity: 0.8;
+      font-size: 0.875rem;
+    }
+
+    .navbar a {
+      color: white;
+      text-decoration: none;
+      margin-left: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-header h2 {
+      font-size: 1.5rem;
+      font-weight: 500;
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #1976d2;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #1565c0;
+    }
+
+    .btn-secondary {
+      background: #757575;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #616161;
+    }
+
+    .btn-danger {
+      background: #d32f2f;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #c62828;
+    }
+
+    .btn-sm {
+      padding: 0.25rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 1rem;
+      background: #f5f5f5;
+      font-weight: 500;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    tr:hover {
+      background: #fafafa;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      background: #757575;
+      color: white;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-right: 0.25rem;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-body {
+      padding: 1.5rem;
+    }
+
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #1976d2;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #1976d2;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .text-muted {
+      color: #757575;
+    }
+
+    .toast {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: white;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      padding: 1rem 1.5rem;
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .toast.show {
+      display: flex;
+    }
+
+    .toast.success {
+      border-left: 4px solid #4caf50;
+    }
+
+    .toast.error {
+      border-left: 4px solid #f44336;
+    }
+
+    .btn-group {
+      display: inline-flex;
+      gap: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <h1>
+      <strong>MWS Admin</strong>
+      <small>(HTMX Proof-of-Concept)</small>
+    </h1>
+    <div style="float: right;">
+      <a href="{{pathPrefix}}/admin">Switch to React Admin</a>
+      <span style="margin-left: 1rem;">{{username}}</span>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Users</h2>
+        <button class="btn btn-primary" onclick="showCreateModal()">
+          Create New User
+        </button>
+      </div>
+      <table id="users-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Roles</th>
+            <th>Last Login</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody">
+          <tr>
+            <td colspan="6" class="loading">
+              <div class="spinner"></div>
+              <div>Loading users...</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Create/Edit User Modal -->
+  <div id="userModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Create User</h3>
+        <button class="btn btn-sm" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="userForm" onsubmit="handleUserSubmit(event)">
+          <input type="hidden" id="user_id" name="user_id">
+
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required>
+          </div>
+
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required>
+          </div>
+
+          <div class="form-group">
+            <label for="roles">Roles (Hold Ctrl/Cmd for multiple)</label>
+            <select id="roles" name="role_ids" multiple size="3">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">
+              <span id="submit-spinner" class="spinner" style="display:none;"></span>
+              <span id="submit-text">Create User</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">
+    <span id="toast-message"></span>
+    <button class="btn btn-sm" onclick="hideToast()">&times;</button>
+  </div>
+
+  <script>
+    const pathPrefix = '{{pathPrefix}}';
+    let allRoles = [];
+    let allUsers = [];
+
+    // Utility: Make API request
+    async function apiRequest(endpoint, data) {
+      const response = await fetch(pathPrefix + '/admin/' + endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki'
+        },
+        body: JSON.stringify(data)
+      });
+
+      // Handle session expiry
+      if (response.status === 401) {
+        const currentPath = window.location.pathname;
+        window.location.href = pathPrefix + '/login?redirect=' + encodeURIComponent(currentPath);
+        throw new Error('Session expired. Redirecting to login...');
+      }
+
+      if (!response.ok) {
+        let errorMessage = 'An error occurred. Please try again.';
+
+        try {
+          const errorData = await response.json();
+          if (errorData.reason && typeof errorData.reason === 'string') {
+            errorMessage = errorData.reason;
+          } else if (errorData.message && typeof errorData.message === 'string') {
+            errorMessage = errorData.message;
+          }
+        } catch (e) {
+          // Failed to parse JSON, try text
+          const text = await response.text();
+          if (text && text.length < 200) {
+            errorMessage = text;
+          }
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    }
+
+    // Load users on page load
+    async function loadUsers() {
+      try {
+        allUsers = await apiRequest('user_list', undefined);
+        renderUsers();
+      } catch (error) {
+        showToast('Failed to load users: ' + error.message, 'error');
+      }
+    }
+
+    // Render users table
+    function renderUsers() {
+      const tbody = document.getElementById('users-tbody');
+
+      if (allUsers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;" class="text-muted">No users found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = allUsers.map(user => `
+        <tr id="user-${escapeHtml(user.user_id)}">
+          <td><strong>${escapeHtml(user.username)}</strong></td>
+          <td>${escapeHtml(user.email)}</td>
+          <td>
+            ${user.roles.map(role => `<span class="badge">${escapeHtml(role.role_name)}</span>`).join('')}
+          </td>
+          <td>${user.last_login ? formatDate(user.last_login) : '<span class="text-muted">Never</span>'}</td>
+          <td>${formatDate(user.created_at)}</td>
+          <td>
+            <div class="btn-group">
+              <button class="btn btn-primary btn-sm" data-action="edit" data-user-id="${escapeHtml(user.user_id)}">Edit</button>
+              <button class="btn btn-danger btn-sm" data-action="delete" data-user-id="${escapeHtml(user.user_id)}" data-username="${escapeHtml(user.username)}">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Load all roles for the form
+    async function loadRoles() {
+      try {
+        // Get roles and other data from index endpoint
+        const data = await apiRequest('index_json', undefined);
+        allRoles = data.roleList || [];
+
+        // Check if user is admin
+        if (!data.isAdmin) {
+          showToast('Admin access required to manage users', 'error');
+          document.getElementById('users-tbody').innerHTML =
+            '<tr><td colspan="6" style="text-align: center;" class="text-muted">Admin access required</td></tr>';
+          return false;
+        }
+        return true;
+      } catch (error) {
+        console.error('Failed to load roles:', error);
+        showToast('Failed to initialize: ' + error.message, 'error');
+        return false;
+      }
+    }
+
+    // Show create modal
+    function showCreateModal() {
+      document.getElementById('modal-title').textContent = 'Create User';
+      document.getElementById('submit-text').textContent = 'Create User';
+      document.getElementById('userForm').reset();
+      document.getElementById('user_id').value = '';
+      populateRoles([]);
+      document.getElementById('userModal').classList.add('show');
+    }
+
+    // Show edit modal
+    async function showEditModal(userId) {
+      try {
+        const data = await apiRequest('user_edit_data', { user_id: userId });
+
+        document.getElementById('modal-title').textContent = 'Edit User';
+        document.getElementById('submit-text').textContent = 'Update User';
+        document.getElementById('user_id').value = data.user.user_id;
+        document.getElementById('username').value = data.user.username;
+        document.getElementById('email').value = data.user.email;
+
+        allRoles = data.allRoles;
+        populateRoles(data.user.roles.map(r => r.role_id));
+
+        document.getElementById('userModal').classList.add('show');
+      } catch (error) {
+        showToast('Failed to load user: ' + error.message, 'error');
+      }
+    }
+
+    // Populate roles dropdown
+    function populateRoles(selectedIds = []) {
+      const select = document.getElementById('roles');
+      select.innerHTML = allRoles.map(role =>
+        `<option value="${role.role_id}" ${selectedIds.includes(role.role_id) ? 'selected' : ''}>
+          ${escapeHtml(role.role_name)} - ${escapeHtml(role.description)}
+        </option>`
+      ).join('');
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('userModal').classList.remove('show');
+    }
+
+    // Handle form submission
+    async function handleUserSubmit(event) {
+      event.preventDefault();
+
+      const spinner = document.getElementById('submit-spinner');
+      const submitBtn = event.target.querySelector('button[type="submit"]');
+
+      spinner.style.display = 'inline-block';
+      submitBtn.disabled = true;
+
+      try {
+        const formData = new FormData(event.target);
+        const userId = formData.get('user_id');
+        const username = formData.get('username');
+        const email = formData.get('email');
+        const role_ids = formData.getAll('role_ids');
+
+        if (userId) {
+          // Update existing user
+          await apiRequest('user_update', { user_id: userId, username, email, role_ids });
+          showToast('User updated successfully', 'success');
+        } else {
+          // Create new user
+          await apiRequest('user_create', { username, email, role_ids });
+          showToast('User created successfully', 'success');
+        }
+
+        closeModal();
+        await loadUsers();
+      } catch (error) {
+        showToast('Failed to save user: ' + error.message, 'error');
+      } finally {
+        spinner.style.display = 'none';
+        submitBtn.disabled = false;
+      }
+    }
+
+    // Delete user
+    async function deleteUser(userId, username) {
+      if (!confirm(`Are you sure you want to delete user '${username}'?`)) {
+        return;
+      }
+
+      try {
+        await apiRequest('user_delete', { user_id: userId });
+        showToast('User deleted successfully', 'success');
+        await loadUsers();
+      } catch (error) {
+        showToast('Failed to delete user: ' + error.message, 'error');
+      }
+    }
+
+    // Show toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const messageEl = document.getElementById('toast-message');
+
+      messageEl.textContent = message;
+      toast.className = `toast show ${type}`;
+
+      setTimeout(() => hideToast(), 5000);
+    }
+
+    // Hide toast
+    function hideToast() {
+      document.getElementById('toast').classList.remove('show');
+    }
+
+    // Utility functions
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatDate(dateString) {
+      return new Date(dateString).toLocaleDateString();
+    }
+
+    // Event delegation for user action buttons
+    document.getElementById('users-tbody').addEventListener('click', (e) => {
+      const target = e.target;
+      if (target.tagName === 'BUTTON' && target.dataset.action) {
+        const action = target.dataset.action;
+        const userId = target.dataset.userId;
+
+        if (action === 'edit' && userId) {
+          showEditModal(userId);
+        } else if (action === 'delete' && userId) {
+          const username = target.dataset.username;
+          deleteUser(userId, username);
+        }
+      }
+    });
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      const hasAccess = await loadRoles();
+      if (hasAccess) {
+        await loadUsers();
+      }
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('userModal').addEventListener('click', (e) => {
+      if (e.target.id === 'userModal') {
+        closeModal();
+      }
+    });
+  </script>
+</body>
+</html>
