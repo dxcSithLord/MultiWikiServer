@@ -26,7 +26,14 @@ export class HtmxAdminManager {
       },
       async (state) => {
         // Check authentication
-        state.okUser();
+        try {
+          state.okUser();
+        } catch (error) {
+          console.warn(`[admin-htmx] Authentication failed for request to ${state.url}:`, error);
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
 
         // Check admin role
         if (!state.user.isAdmin) {
@@ -70,7 +77,13 @@ export class HtmxAdminManager {
       },
       async (state) => {
         // Check authentication
-        state.okUser();
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
 
         // Check admin role
         if (!state.user.isAdmin) {
