@@ -260,6 +260,59 @@
       display: inline-flex;
       gap: 0.5rem;
     }
+
+    .user-dropdown {
+      position: relative;
+    }
+
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      margin-top: 0.5rem;
+      background: white;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      min-width: 200px;
+      z-index: 1000;
+    }
+
+    .dropdown-menu.show {
+      display: block;
+    }
+
+    .dropdown-item {
+      display: block;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: none;
+      background: none;
+      text-align: left;
+      cursor: pointer;
+      color: #333;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .dropdown-item:hover:not(.disabled) {
+      background: #f5f5f5;
+    }
+
+    .dropdown-item.disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+
+    .dropdown-item span {
+      margin-right: 0.5rem;
+    }
+
+    .dropdown-divider {
+      height: 1px;
+      background: #e0e0e0;
+      margin: 0.25rem 0;
+    }
   </style>
 </head>
 <body>
@@ -269,9 +322,30 @@
       <strong>MWS Admin</strong>
       <small>(HTMX Proof-of-Concept)</small>
     </h1>
-    <div style="float: right;">
+    <div style="float: right; display: flex; align-items: center; gap: 1rem;">
       <a href="{{pathPrefix}}/admin">Switch to React Admin</a>
-      <span style="margin-left: 1rem;">{{username}}</span>
+
+      <!-- User Dropdown -->
+      <div class="user-dropdown">
+        <button class="btn btn-secondary" id="user-menu-btn">
+          <span>{{username}}</span>
+          <span style="margin-left: 0.5rem;">▼</span>
+        </button>
+        <div class="dropdown-menu" id="user-menu">
+          <a href="{{pathPrefix}}/admin-htmx/profile" class="dropdown-item">
+            <span>👤</span> Profile
+          </a>
+          <div class="dropdown-divider"></div>
+          <button id="logout-btn" class="dropdown-item">
+            <span>🚪</span> Logout
+          </button>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item disabled" style="font-size: 0.8rem; color: #757575;">
+            <div>TW5: <span id="tw5-version">--</span></div>
+            <div>MWS: <span id="mws-version">--</span></div>
+          </div>
+        </div>
+      </div>
     </div>
   </nav>
 
@@ -280,7 +354,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Users</h2>
-        <button class="btn btn-primary" onclick="showCreateModal()">
+        <button id="create-user-btn" class="btn btn-primary">
           Create New User
         </button>
       </div>
@@ -312,7 +386,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modal-title">Create User</h3>
-        <button class="btn btn-sm" onclick="closeModal()">&times;</button>
+        <button class="btn btn-sm" data-action="close-modal" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <form id="userForm" onsubmit="handleUserSubmit(event)">
@@ -336,7 +410,7 @@
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-secondary" data-action="close-modal">Cancel</button>
             <button type="submit" class="btn btn-primary">
               <span id="submit-spinner" class="spinner" style="display:none;"></span>
               <span id="submit-text">Create User</span>
@@ -350,7 +424,7 @@
   <!-- Toast Notification -->
   <div id="toast" class="toast">
     <span id="toast-message"></span>
-    <button class="btn btn-sm" onclick="hideToast()">&times;</button>
+    <button class="btn btn-sm" id="toast-close-btn" aria-label="Close">&times;</button>
   </div>
 
   <script>
@@ -444,6 +518,12 @@
         // Get roles and other data from index endpoint
         const data = await apiRequest('index_json', undefined);
         allRoles = data.roleList || [];
+
+        // Update version info in dropdown
+        if (data.versions) {
+          document.getElementById('tw5-version').textContent = data.versions.tw5 || '--';
+          document.getElementById('mws-version').textContent = data.versions.mws || '--';
+        }
 
         // Check if user is admin
         if (!data.isAdmin) {
@@ -584,6 +664,47 @@
       return new Date(dateString).toLocaleDateString();
     }
 
+    // User menu button handler
+    document.getElementById('user-menu-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById('user-menu');
+      menu.classList.toggle('show');
+    });
+
+    // Logout button handler
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        const response = await fetch(pathPrefix + '/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'TiddlyWiki'
+          },
+          body: JSON.stringify(null)
+        });
+
+        if (response.ok) {
+          // Redirect to home page after logout
+          window.location.href = pathPrefix + '/';
+        } else {
+          showToast('Logout failed', 'error');
+        }
+      } catch (error) {
+        console.error('Logout error:', error);
+        showToast('Logout failed: ' + error.message, 'error');
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      const dropdown = document.querySelector('.user-dropdown');
+      const menu = document.getElementById('user-menu');
+
+      if (dropdown && !dropdown.contains(e.target)) {
+        menu.classList.remove('show');
+      }
+    });
+
     // Event delegation for user action buttons
     document.getElementById('users-tbody').addEventListener('click', (e) => {
       const target = e.target;
@@ -600,18 +721,118 @@
       }
     });
 
-    // Initialize
+    // Initialize all event listeners on DOMContentLoaded
     document.addEventListener('DOMContentLoaded', async () => {
+      // Check URL parameters for auto-opening edit modal (for profile)
+      const urlParams = new URLSearchParams(window.location.search);
+      const editUserId = urlParams.get('editUser');
+
+      // Create user button
+      const createUserBtn = document.getElementById('create-user-btn');
+      if (createUserBtn) {
+        createUserBtn.addEventListener('click', showCreateModal);
+      }
+
+      // Close toast button
+      const toastCloseBtn = document.getElementById('toast-close-btn');
+      if (toastCloseBtn) {
+        toastCloseBtn.addEventListener('click', hideToast);
+      }
+
+      // User menu button handler
+      const userMenuBtn = document.getElementById('user-menu-btn');
+      const userMenu = document.getElementById('user-menu');
+
+      if (userMenuBtn && userMenu) {
+        userMenuBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          userMenu.classList.toggle('show');
+        });
+      }
+
+      // Logout button handler
+      const logoutBtn = document.getElementById('logout-btn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+          try {
+            const response = await fetch(pathPrefix + '/logout', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'TiddlyWiki'
+              },
+              body: JSON.stringify(undefined)
+            });
+
+            if (response.ok) {
+              window.location.href = pathPrefix + '/';
+            } else {
+              // Even on failure, redirect to login for security
+              showToast('Logout encountered an issue. Redirecting to login...', 'error');
+              setTimeout(() => {
+                window.location.href = pathPrefix + '/login';
+              }, 2000);
+            }
+          } catch (error) {
+            console.error('Logout error:', error);
+            showToast('Network error during logout. Please try again.', 'error');
+          }
+        });
+      }
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', (e) => {
+        const dropdown = document.querySelector('.user-dropdown');
+        if (dropdown && userMenu && !dropdown.contains(e.target)) {
+          userMenu.classList.remove('show');
+        }
+      });
+
+      // Close modal buttons (event delegation)
+      document.addEventListener('click', (e) => {
+        if (e.target.closest('[data-action="close-modal"]')) {
+          closeModal();
+        }
+      });
+
+      // Event delegation for user action buttons
+      const usersTbody = document.getElementById('users-tbody');
+      if (usersTbody) {
+        usersTbody.addEventListener('click', (e) => {
+          const target = e.target;
+          if (target.tagName === 'BUTTON' && target.dataset.action) {
+            const action = target.dataset.action;
+            const userId = target.dataset.userId;
+
+            if (action === 'edit' && userId) {
+              showEditModal(userId);
+            } else if (action === 'delete' && userId) {
+              const username = target.dataset.username;
+              deleteUser(userId, username);
+            }
+          }
+        });
+      }
+
+      // Close modal when clicking backdrop
+      const userModal = document.getElementById('userModal');
+      if (userModal) {
+        userModal.addEventListener('click', (e) => {
+          if (e.target === e.currentTarget) {
+            closeModal();
+          }
+        });
+      }
+
+      // Load initial data
       const hasAccess = await loadRoles();
       if (hasAccess) {
         await loadUsers();
-      }
-    });
 
-    // Close modal when clicking outside
-    document.getElementById('userModal').addEventListener('click', (e) => {
-      if (e.target.id === 'userModal') {
-        closeModal();
+        // Auto-open edit modal if editUser parameter is present (for profile)
+        if (editUserId) {
+          showEditModal(editUserId);
+        }
       }
     });
   </script>

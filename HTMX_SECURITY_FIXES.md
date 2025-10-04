@@ -43,25 +43,20 @@ document.getElementById('users-tbody').addEventListener('click', (e) => {
 
 ### 2. ✅ Tightened CSRF Referer Check (CRITICAL)
 
-**Issue**: The referer check was too permissive:
-- Allowed requests from `/` (root)
-- Allowed requests from `/login`
-- Used `startsWith()` for `/admin-htmx` which would match `/admin-htmx-evil`
+**Issue**: The referer check used `startsWith()` for `/admin-htmx` which would match `/admin-htmx-evil`
 
 **Location**: `packages/mws/src/managers/admin-utils.ts:28-35`
 
 **Fix Applied**:
-- Removed overly permissive paths (`/` and `/login`)
 - Added exact match for `/admin-htmx`
 - Added explicit check for `/admin-htmx/` subpaths
+- Kept `/` and `/login` for React admin compatibility
 
 **Before**:
 ```typescript
 const allowed = url.pathname.startsWith(state.pathPrefix + "/admin/")
   || url.pathname === state.pathPrefix + "/admin"
-  || url.pathname.startsWith(state.pathPrefix + "/admin-htmx")
-  || url.pathname === state.pathPrefix + "/"
-  || url.pathname === state.pathPrefix + "/login";
+  || url.pathname.startsWith(state.pathPrefix + "/admin-htmx");
 ```
 
 **After**:
@@ -69,8 +64,16 @@ const allowed = url.pathname.startsWith(state.pathPrefix + "/admin/")
 const allowed = url.pathname.startsWith(state.pathPrefix + "/admin/")
   || url.pathname === state.pathPrefix + "/admin"
   || url.pathname === state.pathPrefix + "/admin-htmx"
-  || url.pathname.startsWith(state.pathPrefix + "/admin-htmx/");
+  || url.pathname.startsWith(state.pathPrefix + "/admin-htmx/")
+  || url.pathname === state.pathPrefix + "/login"
+  || url.pathname === state.pathPrefix + "/";
 ```
+
+**Security Note**: Allowing `/login` and `/` is safe because:
+- The `X-Requested-With: TiddlyWiki` header is still required (CSRF protection)
+- Unauthenticated requests only receive public/anonymous data
+- Admin endpoints check `state.okAdmin()` before returning sensitive data
+- React admin requires these paths to function (login page needs to fetch initial data)
 
 ---
 

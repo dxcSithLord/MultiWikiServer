@@ -26,12 +26,15 @@ export function admin<T extends zod.ZodTypeAny, R extends JsonValue>(
       const url = new URL(state.headers.referer);
 
       const allowed = url.pathname.startsWith(state.pathPrefix + "/admin/")
-        || url.pathname === state.pathPrefix + "/"
-        || url.pathname === state.pathPrefix + "/login";
+        || url.pathname === state.pathPrefix + "/admin"
+        || url.pathname === state.pathPrefix + "/admin-htmx"
+        || url.pathname.startsWith(state.pathPrefix + "/admin-htmx/")
+        || url.pathname === state.pathPrefix + "/login"
+        || url.pathname === state.pathPrefix + "/";
 
 
       if (!allowed)
-        throw state.sendEmpty(400, { "x-reason": "Referer header must start with /admin/" });
+        throw state.sendEmpty(400, { "x-reason": "Referer header must be from /admin or /admin-htmx paths" });
 
       state.asserted = true;
       return state.$transaction(async (prisma) => await inner(state, prisma));

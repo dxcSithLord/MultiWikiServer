@@ -18,10 +18,54 @@ serverEvents.on("mws.routes", (root) => {
 
 export class HtmxAdminManager {
   static defineRoutes(root: ServerRoute) {
+    // Profile route - redirects to user's own profile in user management
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/profile$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        // Check authentication
+        state.okUser();
+
+        // Check admin role
+        if (!state.user.isAdmin) {
+          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
+
+          return state.sendBuffer(403, {
+            "content-type": "text/html; charset=utf-8",
+          }, Buffer.from(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>403 Forbidden</title>
+              <style>
+                body { font-family: sans-serif; max-width: 600px; margin: 100px auto; text-align: center; }
+                h1 { color: #d32f2f; }
+              </style>
+            </head>
+            <body>
+              <h1>403 Forbidden</h1>
+              <p>Admin access required to view this page.</p>
+              <p><a href="${state.pathPrefix}/">Return to Home</a></p>
+            </body>
+            </html>
+          `, "utf-8"));
+        }
+
+        // Redirect to the user's own profile in the user management interface
+        const user_id = state.user?.user_id || "";
+
+        return state.sendBuffer(302, {
+          "location": `${state.pathPrefix}/admin-htmx?editUser=${encodeURIComponent(user_id)}`,
+        }, Buffer.from("Redirecting to profile...", "utf-8"));
+      }
+    );
+
     // Main route for HTMX admin interface
     root.defineRoute(
       {
-        path: /^\/admin-htmx(?:\/(.*))?$/,
+        path: /^\/admin-htmx$/,
         method: ["GET"],
       },
       async (state) => {
