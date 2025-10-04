@@ -9,4 +9,5 @@ TiddlyWiki5
 /.vscode/settings.json
 editions/mws-docs/tiddlers/$__StoryList.tid
 /tests
-/public
+/tests-output
+/tests-temp
