@@ -24,6 +24,7 @@ interface FrameTemplateVars {
   username: string;
   isRecipes?: boolean;
   isBags?: boolean;
+  isPlugins?: boolean;
   isUsers?: boolean;
   isRoles?: boolean;
   isSettings?: boolean;
@@ -71,6 +72,7 @@ export class HtmxAdminManager {
     // Handle {{#if}} conditionals
     html = html.replace(/\{\{#if isRecipes\}\}(.*?)\{\{\/if\}\}/gs, vars.isRecipes ? '$1' : '');
     html = html.replace(/\{\{#if isBags\}\}(.*?)\{\{\/if\}\}/gs, vars.isBags ? '$1' : '');
+    html = html.replace(/\{\{#if isPlugins\}\}(.*?)\{\{\/if\}\}/gs, vars.isPlugins ? '$1' : '');
     html = html.replace(/\{\{#if isUsers\}\}(.*?)\{\{\/if\}\}/gs, vars.isUsers ? '$1' : '');
     html = html.replace(/\{\{#if isRoles\}\}(.*?)\{\{\/if\}\}/gs, vars.isRoles ? '$1' : '');
     html = html.replace(/\{\{#if isSettings\}\}(.*?)\{\{\/if\}\}/gs, vars.isSettings ? '$1' : '');
@@ -256,6 +258,41 @@ export class HtmxAdminManager {
           pathPrefix: state.pathPrefix,
           username: state.user?.username || "Guest",
           isBags: true,
+          isAdmin: state.user.isAdmin,
+        });
+
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
+      }
+    );
+
+    // Plugins route
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/plugins$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+
+        await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
+
+        const templatePath = resolve(templatesDir, "htmx-admin-plugins.html");
+        let content = await readFile(templatePath, "utf-8");
+        content = content.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "TW5 Plugins",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isPlugins: true,
           isAdmin: state.user.isAdmin,
         });
 

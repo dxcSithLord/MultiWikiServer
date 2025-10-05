@@ -1,0 +1,218 @@
+<div class="mws-admin-card">
+  <div class="mws-admin-card-header">
+    <h2>TiddlyWiki Plugins</h2>
+  </div>
+  <div style="padding: 0;">
+    <div id="plugins-loading" class="mws-loading" style="display: none;">
+      <div class="mws-spinner"></div>
+      Loading plugins...
+    </div>
+    <div id="plugins-tree" style="display: none; padding: 0;">
+    </div>
+    <div id="plugins-empty" style="padding: 2rem; text-align: center; display: none;">
+      <p class="mws-text-muted">No plugins found.</p>
+    </div>
+  </div>
+</div>
+
+<style>
+.mws-plugin-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.mws-plugin-item {
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.mws-plugin-item:last-child {
+  border-bottom: none;
+}
+
+.mws-plugin-folder {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.mws-plugin-folder:hover {
+  background: #f5f5f5;
+}
+
+.mws-plugin-folder-icon {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+  width: 1.5rem;
+  text-align: center;
+}
+
+.mws-plugin-folder-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.mws-plugin-path {
+  color: #757575;
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.mws-plugin-children {
+  display: none;
+  padding-left: 2rem;
+  background: #fafafa;
+}
+
+.mws-plugin-children.mws-show {
+  display: block;
+}
+</style>
+
+<script>
+(function() {
+  const pathPrefix = '{{pathPrefix}}';
+  let pluginsData = [];
+  let pluginTree = {};
+
+  async function loadPlugins() {
+    try {
+      const response = await fetch(pathPrefix + '/admin/index_json', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(undefined)
+      });
+
+      if (!response.ok) throw new Error('Failed to load data');
+
+      const indexData = await response.json();
+      pluginsData = indexData.clientPlugins || [];
+      buildPluginTree();
+      renderPlugins();
+    } catch (error) {
+      console.error('Failed to load plugins:', error);
+      showToast('Failed to load plugins: ' + error.message, 'error');
+    }
+  }
+
+  function buildPluginTree() {
+    pluginTree = {};
+    const NAME_SYMBOL = '__name__';
+
+    pluginsData.forEach(pluginPath => {
+      const parts = pluginPath.split('/');
+      let current = pluginTree;
+
+      parts.forEach(part => {
+        if (!current[part]) {
+          current[part] = {};
+        }
+        current = current[part];
+      });
+
+      // Store the full path at the leaf node
+      current[NAME_SYMBOL] = pluginPath;
+    });
+  }
+
+  function renderPlugins() {
+    const loading = document.getElementById('plugins-loading');
+    const tree = document.getElementById('plugins-tree');
+    const empty = document.getElementById('plugins-empty');
+
+    loading.style.display = 'none';
+
+    if (pluginsData.length === 0) {
+      tree.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    tree.style.display = 'block';
+    tree.innerHTML = '';
+
+    const rootList = createTreeLevel(pluginTree, 0);
+    tree.appendChild(rootList);
+
+    // Auto-expand $: folder
+    const dollarFolder = tree.querySelector('[data-folder="$:"]');
+    if (dollarFolder) {
+      dollarFolder.click();
+    }
+  }
+
+  function createTreeLevel(node, depth) {
+    const ul = document.createElement('ul');
+    ul.className = 'mws-plugin-tree';
+
+    const keys = Object.keys(node).filter(k => k !== '__name__').sort();
+
+    keys.forEach(key => {
+      const li = document.createElement('li');
+      li.className = 'mws-plugin-item';
+
+      const hasChildren = Object.keys(node[key]).length > 1 ||
+                         (Object.keys(node[key]).length === 1 && !node[key].__name__);
+      const fullPath = node[key].__name__;
+
+      const folder = document.createElement('div');
+      folder.className = 'mws-plugin-folder';
+      folder.dataset.folder = key;
+
+      const icon = document.createElement('span');
+      icon.className = 'mws-plugin-folder-icon';
+      icon.textContent = hasChildren ? '▶' : '📄';
+
+      const name = document.createElement('span');
+      name.className = 'mws-plugin-folder-name';
+      name.textContent = key;
+
+      if (fullPath && !hasChildren) {
+        const path = document.createElement('div');
+        path.className = 'mws-plugin-path';
+        path.textContent = fullPath;
+        name.appendChild(path);
+      }
+
+      folder.appendChild(icon);
+      folder.appendChild(name);
+      li.appendChild(folder);
+
+      if (hasChildren) {
+        const children = document.createElement('div');
+        children.className = 'mws-plugin-children';
+        children.appendChild(createTreeLevel(node[key], depth + 1));
+        li.appendChild(children);
+
+        folder.addEventListener('click', () => {
+          const isOpen = children.classList.contains('mws-show');
+          children.classList.toggle('mws-show');
+          icon.textContent = isOpen ? '▶' : '▼';
+        });
+      }
+
+      ul.appendChild(li);
+    });
+
+    return ul;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('plugins-loading').style.display = 'block';
+    loadPlugins();
+  });
+})();
+</script>
