@@ -1,0 +1,268 @@
+<div class="mws-admin-card">
+  <div class="mws-admin-card-header">
+    <h2>Bags</h2>
+    <button class="mws-btn mws-btn-primary" id="create-bag-btn">Create New Bag</button>
+  </div>
+  <div style="padding: 0;">
+    <div id="bags-loading" class="mws-loading" style="display: none;">
+      <div class="mws-spinner"></div>
+      Loading bags...
+    </div>
+    <table class="mws-admin-table" id="bags-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Owner</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="bags-tbody">
+      </tbody>
+    </table>
+    <div id="bags-empty" style="padding: 2rem; text-align: center; display: none;">
+      <p class="mws-text-muted">No bags found. Create your first bag to get started.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Bag Edit Modal -->
+<div class="mws-modal" id="bag-modal">
+  <div class="mws-modal-content">
+    <div class="mws-modal-header">
+      <h3 id="bag-modal-title">Create Bag</h3>
+      <button class="mws-btn mws-btn-sm" id="bag-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="mws-modal-body">
+      <form id="bag-form">
+        <div class="mws-form-group">
+          <label for="bag-name">Bag Name *</label>
+          <input type="text" class="mws-form-input" id="bag-name" required>
+        </div>
+        <div class="mws-form-group">
+          <label for="bag-description">Description</label>
+          <textarea class="mws-form-textarea" id="bag-description" rows="3"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="mws-modal-footer">
+      <button class="mws-btn mws-btn-secondary" id="bag-cancel-btn">Cancel</button>
+      <button class="mws-btn mws-btn-primary" id="bag-save-btn">Save Bag</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const pathPrefix = '{{pathPrefix}}';
+  let bagsData = [];
+  let indexData = null;
+  let currentBag = null;
+
+  async function loadIndex() {
+    try {
+      const response = await fetch(pathPrefix + '/admin/index_json', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(undefined)
+      });
+
+      if (!response.ok) throw new Error('Failed to load data');
+
+      indexData = await response.json();
+      bagsData = indexData.bagList || [];
+      renderBags();
+    } catch (error) {
+      console.error('Failed to load bags:', error);
+      showToast('Failed to load bags: ' + error.message, 'error');
+    }
+  }
+
+  function getOwnerName(owner_id) {
+    if (!owner_id) return 'System';
+    const users = indexData?.userListAdmin || indexData?.userListUser || [];
+    const user = users.find(u => u.user_id === owner_id);
+    return user?.username || 'Unknown';
+  }
+
+  function renderBags() {
+    const loading = document.getElementById('bags-loading');
+    const table = document.getElementById('bags-table');
+    const empty = document.getElementById('bags-empty');
+    const tbody = document.getElementById('bags-tbody');
+
+    loading.style.display = 'none';
+
+    if (bagsData.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+    tbody.innerHTML = '';
+
+    bagsData.forEach(bag => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><strong>${escapeHtml(bag.bag_name)}</strong></td>
+        <td>${escapeHtml(bag.description || '')}</td>
+        <td>${escapeHtml(getOwnerName(bag.owner_id))}</td>
+        <td>
+          <div class="mws-btn-group">
+            <button class="mws-btn mws-btn-sm mws-btn-secondary" data-action="edit" data-id="${escapeHtml(bag.bag_name)}">Edit</button>
+            <button class="mws-btn mws-btn-sm mws-btn-danger" data-action="delete" data-id="${escapeHtml(bag.bag_name)}">Delete</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    tbody.addEventListener('click', handleBagAction);
+  }
+
+  function handleBagAction(event) {
+    const target = event.target;
+    if (!target.matches('[data-action]')) return;
+
+    const action = target.dataset.action;
+    const id = target.dataset.id;
+
+    if (action === 'edit') {
+      openBagModal(id);
+    } else if (action === 'delete') {
+      deleteBag(id);
+    }
+  }
+
+  function openBagModal(bagName) {
+    const modal = document.getElementById('bag-modal');
+    const title = document.getElementById('bag-modal-title');
+    const form = document.getElementById('bag-form');
+
+    if (bagName) {
+      currentBag = bagsData.find(b => b.bag_name === bagName);
+      title.textContent = 'Edit Bag';
+
+      document.getElementById('bag-name').value = currentBag.bag_name;
+      document.getElementById('bag-name').readOnly = true;
+      document.getElementById('bag-description').value = currentBag.description || '';
+    } else {
+      currentBag = null;
+      title.textContent = 'Create Bag';
+      form.reset();
+      document.getElementById('bag-name').readOnly = false;
+    }
+
+    modal.classList.add('mws-show');
+  }
+
+  async function saveBag() {
+    const name = document.getElementById('bag-name').value.trim();
+    const description = document.getElementById('bag-description').value.trim();
+
+    if (!name) {
+      showToast('Bag name is required', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(pathPrefix + '/admin/bag_create_or_update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify({
+          bag_name: name,
+          description,
+          create_only: !currentBag
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to save bag';
+        try {
+          const data = JSON.parse(text);
+          if (data.reason) errorMsg = data.reason;
+        } catch (e) {
+          if (text && text.length < 200) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      showToast(`Bag ${currentBag ? 'updated' : 'created'} successfully`, 'success');
+      closeBagModal();
+      loadIndex();
+    } catch (error) {
+      console.error('Failed to save bag:', error);
+      showToast(error.message, 'error');
+    }
+  }
+
+  async function deleteBag(bagName) {
+    if (!confirm(`Are you sure you want to delete bag "${bagName}"?\n\nNote: Bags with tiddlers cannot be deleted.`)) return;
+
+    try {
+      const response = await fetch(pathPrefix + '/admin/bag_delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify({ bag_name: bagName })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to delete bag';
+        try {
+          const data = JSON.parse(text);
+          if (data.reason) errorMsg = data.reason;
+        } catch (e) {
+          if (text && text.length < 200) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      showToast('Bag deleted successfully', 'success');
+      loadIndex();
+    } catch (error) {
+      console.error('Failed to delete bag:', error);
+      showToast(error.message, 'error');
+    }
+  }
+
+  function closeBagModal() {
+    document.getElementById('bag-modal').classList.remove('mws-show');
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('create-bag-btn').addEventListener('click', () => openBagModal(null));
+    document.getElementById('bag-modal-close').addEventListener('click', closeBagModal);
+    document.getElementById('bag-cancel-btn').addEventListener('click', closeBagModal);
+    document.getElementById('bag-save-btn').addEventListener('click', saveBag);
+
+    document.getElementById('bag-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'bag-modal') closeBagModal();
+    });
+
+    document.getElementById('bags-loading').style.display = 'block';
+    loadIndex();
+  });
+})();
+</script>

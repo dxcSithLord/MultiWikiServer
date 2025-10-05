@@ -1,0 +1,187 @@
+<div class="mws-admin-card">
+  <div class="mws-admin-card-header">
+    <h2>Settings</h2>
+  </div>
+  <div style="padding: 0;">
+    <div id="settings-loading" class="mws-loading" style="display: none;">
+      <div class="mws-spinner"></div>
+      Loading settings...
+    </div>
+    <table class="mws-admin-table" id="settings-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Setting</th>
+          <th style="width: 150px; text-align: center;">Value</th>
+        </tr>
+      </thead>
+      <tbody id="settings-tbody">
+      </tbody>
+    </table>
+    <div id="settings-empty" style="padding: 2rem; text-align: center; display: none;">
+      <p class="mws-text-muted">No settings available.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const pathPrefix = '{{pathPrefix}}';
+  let settingsData = [];
+  let savingKey = null;
+
+  async function loadSettings() {
+    try {
+      const response = await fetch(pathPrefix + '/admin/settings_read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(undefined)
+      });
+
+      if (!response.ok) throw new Error('Failed to load settings');
+
+      settingsData = await response.json();
+      renderSettings();
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      showToast('Failed to load settings: ' + error.message, 'error');
+    }
+  }
+
+  function renderSettings() {
+    const loading = document.getElementById('settings-loading');
+    const table = document.getElementById('settings-table');
+    const empty = document.getElementById('settings-empty');
+    const tbody = document.getElementById('settings-tbody');
+
+    loading.style.display = 'none';
+
+    if (!settingsData || settingsData.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+    tbody.innerHTML = '';
+
+    settingsData.forEach(setting => {
+      const row = document.createElement('tr');
+
+      let valueControl = '';
+      if (setting.valueType === 'boolean') {
+        const checked = setting.value === 'true' ? 'checked' : '';
+        valueControl = `
+          <label style="display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <input type="checkbox"
+                   ${checked}
+                   data-key="${escapeHtml(setting.key)}"
+                   data-action="toggle"
+                   style="width: 20px; height: 20px; cursor: pointer;">
+          </label>
+        `;
+      } else {
+        valueControl = `<span class="mws-text-muted">${escapeHtml(setting.value || 'N/A')}</span>`;
+      }
+
+      row.innerHTML = `
+        <td>
+          <strong>${escapeHtml(setting.description || setting.key)}</strong>
+          <div class="mws-text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
+            ${escapeHtml(setting.key)}
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <div id="loading-${escapeHtml(setting.key)}" style="display: none;">
+            <div class="mws-spinner"></div>
+          </div>
+          <div id="value-${escapeHtml(setting.key)}">
+            ${valueControl}
+          </div>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    tbody.addEventListener('change', handleSettingToggle);
+  }
+
+  async function handleSettingToggle(event) {
+    const target = event.target;
+    if (target.dataset.action !== 'toggle') return;
+
+    const key = target.dataset.key;
+    const newValue = target.checked ? 'true' : 'false';
+
+    // Show loading spinner
+    const loadingEl = document.getElementById(`loading-${key}`);
+    const valueEl = document.getElementById(`value-${key}`);
+    if (loadingEl && valueEl) {
+      loadingEl.style.display = 'block';
+      valueEl.style.display = 'none';
+    }
+
+    savingKey = key;
+
+    try {
+      const response = await fetch(pathPrefix + '/admin/settings_update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify({ key, value: newValue })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to update setting';
+        try {
+          const data = JSON.parse(text);
+          if (data.reason) errorMsg = data.reason;
+        } catch (e) {
+          if (text && text.length < 200) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Update local data
+      const setting = settingsData.find(s => s.key === key);
+      if (setting) {
+        setting.value = newValue;
+      }
+
+      showToast('Setting updated successfully', 'success');
+    } catch (error) {
+      console.error('Failed to update setting:', error);
+      showToast(error.message, 'error');
+
+      // Revert checkbox
+      target.checked = !target.checked;
+    } finally {
+      // Hide loading spinner
+      if (loadingEl && valueEl) {
+        loadingEl.style.display = 'none';
+        valueEl.style.display = 'block';
+      }
+      savingKey = null;
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('settings-loading').style.display = 'block';
+    loadSettings();
+  });
+})();
+</script>

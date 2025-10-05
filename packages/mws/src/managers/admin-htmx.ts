@@ -18,6 +18,18 @@ serverEvents.on("mws.routes", (root) => {
   HtmxAdminManager.defineRoutes(root);
 });
 
+interface FrameTemplateVars {
+  pageTitle: string;
+  pathPrefix: string;
+  username: string;
+  isRecipes?: boolean;
+  isBags?: boolean;
+  isUsers?: boolean;
+  isRoles?: boolean;
+  isSettings?: boolean;
+  isAdmin: boolean;
+}
+
 export class HtmxAdminManager {
   private static cssCache: { content: string; etag: string } | null = null;
 
@@ -38,6 +50,58 @@ export class HtmxAdminManager {
     }
 
     return this.cssCache;
+  }
+
+  /**
+   * Render a page using the frame template
+   * Simple Handlebars-like template rendering
+   */
+  private static async renderFrame(content: string, vars: FrameTemplateVars): Promise<string> {
+    const framePath = resolve(templatesDir, "htmx-admin-frame.html");
+    let html = await readFile(framePath, "utf-8");
+
+    // Replace {{content}} placeholder
+    html = html.replace(/\{\{content\}\}/g, content);
+
+    // Replace simple variables
+    html = html.replace(/\{\{pageTitle\}\}/g, escapeHtml(vars.pageTitle));
+    html = html.replace(/\{\{pathPrefix\}\}/g, vars.pathPrefix);
+    html = html.replace(/\{\{username\}\}/g, escapeHtml(vars.username));
+
+    // Handle {{#if}} conditionals
+    html = html.replace(/\{\{#if isRecipes\}\}(.*?)\{\{\/if\}\}/gs, vars.isRecipes ? '$1' : '');
+    html = html.replace(/\{\{#if isBags\}\}(.*?)\{\{\/if\}\}/gs, vars.isBags ? '$1' : '');
+    html = html.replace(/\{\{#if isUsers\}\}(.*?)\{\{\/if\}\}/gs, vars.isUsers ? '$1' : '');
+    html = html.replace(/\{\{#if isRoles\}\}(.*?)\{\{\/if\}\}/gs, vars.isRoles ? '$1' : '');
+    html = html.replace(/\{\{#if isSettings\}\}(.*?)\{\{\/if\}\}/gs, vars.isSettings ? '$1' : '');
+    html = html.replace(/\{\{#if isAdmin\}\}(.*?)\{\{\/if\}\}/gs, vars.isAdmin ? '$1' : '');
+
+    return html;
+  }
+
+  /**
+   * Send 403 Forbidden response
+   */
+  private static send403(state: ServerRequest) {
+    return state.sendBuffer(403, {
+      "content-type": "text/html; charset=utf-8",
+    }, Buffer.from(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>403 Forbidden</title>
+        <style>
+          body { font-family: sans-serif; max-width: 600px; margin: 100px auto; text-align: center; }
+          h1 { color: #d32f2f; }
+        </style>
+      </head>
+      <body>
+        <h1>403 Forbidden</h1>
+        <p>Admin access required to view this page.</p>
+        <p><a href="${state.pathPrefix}/">Return to Home</a></p>
+      </body>
+      </html>
+    `, "utf-8"));
   }
 
   static defineRoutes(root: ServerRoute) {
@@ -118,15 +182,13 @@ export class HtmxAdminManager {
       }
     );
 
-    // Main route for HTMX admin interface
-    // Matches: /admin-htmx, /admin-htmx/, /admin-htmx/users
+    // Recipes route (default admin-htmx page)
     root.defineRoute(
       {
-        path: /^\/admin-htmx(?:\/?|\/users)$/,
+        path: /^\/admin-htmx\/?$/,
         method: ["GET"],
       },
       async (state) => {
-        // Check authentication
         try {
           state.okUser();
         } catch (error) {
@@ -135,46 +197,199 @@ export class HtmxAdminManager {
           }, Buffer.from("Redirecting to login...", "utf-8"));
         }
 
-        // Check admin role
         if (!state.user.isAdmin) {
-          // Emit forbidden event for audit/logging
           await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
-
-          return state.sendBuffer(403, {
-            "content-type": "text/html; charset=utf-8",
-          }, Buffer.from(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>403 Forbidden</title>
-              <style>
-                body { font-family: sans-serif; max-width: 600px; margin: 100px auto; text-align: center; }
-                h1 { color: #d32f2f; }
-              </style>
-            </head>
-            <body>
-              <h1>403 Forbidden</h1>
-              <p>Admin access required to view this page.</p>
-              <p><a href="${state.pathPrefix}/">Return to Home</a></p>
-            </body>
-            </html>
-          `, "utf-8"));
+          return HtmxAdminManager.send403(state);
         }
 
-        // Emit page accessed event for audit/logging
+        await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
+
+        // Read the recipes template
+        const templatePath = resolve(templatesDir, "htmx-admin-recipes.html");
+        let content = await readFile(templatePath, "utf-8");
+
+        // Replace path prefix in template
+        content = content.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "Recipes",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isRecipes: true,
+          isAdmin: state.user.isAdmin,
+        });
+
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
+      }
+    );
+
+    // Bags route
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/bags$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+
+        if (!state.user.isAdmin) {
+          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
+          return HtmxAdminManager.send403(state);
+        }
+
+        await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
+
+        const templatePath = resolve(templatesDir, "htmx-admin-bags.html");
+        let content = await readFile(templatePath, "utf-8");
+        content = content.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "Bags",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isBags: true,
+          isAdmin: state.user.isAdmin,
+        });
+
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
+      }
+    );
+
+    // Users route - uses existing POC template
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/users$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+
+        if (!state.user.isAdmin) {
+          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
+          return HtmxAdminManager.send403(state);
+        }
+
         await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
 
         const username = state.user?.username || "Guest";
         const user_id = state.user?.user_id || "";
 
-        // Read the HTML template
+        // Read the existing POC template (just the body content)
         const templatePath = resolve(templatesDir, "htmx-admin-poc.html");
-        let html = await readFile(templatePath, "utf-8");
+        let pocHtml = await readFile(templatePath, "utf-8");
 
-        // Replace template variables
-        html = html.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
-        html = html.replace(/\{\{username\}\}/g, escapeHtml(username));
-        html = html.replace(/\{\{user_id\}\}/g, escapeHtml(user_id));
+        // Replace template variables in POC
+        pocHtml = pocHtml.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+        pocHtml = pocHtml.replace(/\{\{username\}\}/g, escapeHtml(username));
+        pocHtml = pocHtml.replace(/\{\{user_id\}\}/g, escapeHtml(user_id));
+
+        // Extract just the body content (everything between <body> and </body>)
+        const bodyMatch = pocHtml.match(/<body>([\s\S]*)<\/body>/);
+        const content = bodyMatch ? bodyMatch[1] : pocHtml;
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "Users",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isUsers: true,
+          isAdmin: state.user.isAdmin,
+        });
+
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
+      }
+    );
+
+    // Roles route
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/roles$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+
+        if (!state.user.isAdmin) {
+          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
+          return HtmxAdminManager.send403(state);
+        }
+
+        await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
+
+        const templatePath = resolve(templatesDir, "htmx-admin-roles.html");
+        let content = await readFile(templatePath, "utf-8");
+        content = content.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "Roles",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isRoles: true,
+          isAdmin: state.user.isAdmin,
+        });
+
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
+      }
+    );
+
+    // Settings route
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/settings$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+
+        if (!state.user.isAdmin) {
+          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
+          return HtmxAdminManager.send403(state);
+        }
+
+        await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
+
+        const templatePath = resolve(templatesDir, "htmx-admin-settings.html");
+        let content = await readFile(templatePath, "utf-8");
+        content = content.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "Settings",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isSettings: true,
+          isAdmin: state.user.isAdmin,
+        });
 
         return state.sendBuffer(200, {
           "content-type": "text/html; charset=utf-8",

@@ -1,0 +1,334 @@
+<div class="mws-admin-card">
+  <div class="mws-admin-card-header">
+    <h2>Recipes</h2>
+    <button class="mws-btn mws-btn-primary" id="create-recipe-btn">Create New Recipe</button>
+  </div>
+  <div style="padding: 0;">
+    <div id="recipes-loading" class="mws-loading" style="display: none;">
+      <div class="mws-spinner"></div>
+      Loading recipes...
+    </div>
+    <table class="mws-admin-table" id="recipes-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Owner</th>
+          <th>Bags</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="recipes-tbody">
+      </tbody>
+    </table>
+    <div id="recipes-empty" style="padding: 2rem; text-align: center; display: none;">
+      <p class="mws-text-muted">No recipes found. Create your first recipe to get started.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Recipe Edit Modal -->
+<div class="mws-modal" id="recipe-modal">
+  <div class="mws-modal-content">
+    <div class="mws-modal-header">
+      <h3 id="recipe-modal-title">Create Recipe</h3>
+      <button class="mws-btn mws-btn-sm" id="recipe-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="mws-modal-body">
+      <form id="recipe-form">
+        <div class="mws-form-group">
+          <label for="recipe-name">Recipe Name *</label>
+          <input type="text" class="mws-form-input" id="recipe-name" required>
+        </div>
+        <div class="mws-form-group">
+          <label for="recipe-description">Description</label>
+          <textarea class="mws-form-textarea" id="recipe-description" rows="3"></textarea>
+        </div>
+        <div class="mws-form-group">
+          <label>Options</label>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="recipe-skip-core">
+              Skip Core Plugins
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="recipe-skip-required">
+              Skip Required Plugins
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="checkbox" id="recipe-preload">
+              Preload Store
+            </label>
+          </div>
+        </div>
+        <div class="mws-form-group">
+          <label for="recipe-bags">Bags (one per line, prefix with + for ACL)</label>
+          <textarea class="mws-form-textarea" id="recipe-bags" rows="5" placeholder="system&#10;+my-bag&#10;another-bag"></textarea>
+          <small class="mws-text-muted">Prefix bag name with + to include ACL</small>
+        </div>
+      </form>
+    </div>
+    <div class="mws-modal-footer">
+      <button class="mws-btn mws-btn-secondary" id="recipe-cancel-btn">Cancel</button>
+      <button class="mws-btn mws-btn-primary" id="recipe-save-btn">Save Recipe</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const pathPrefix = '{{pathPrefix}}';
+  let recipesData = [];
+  let indexData = null;
+  let currentRecipe = null;
+
+  // Load index data with recipes and bags
+  async function loadIndex() {
+    try {
+      const response = await fetch(pathPrefix + '/admin/index_json', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(undefined)
+      });
+
+      if (!response.ok) throw new Error('Failed to load data');
+
+      indexData = await response.json();
+      recipesData = indexData.recipeList || [];
+      renderRecipes();
+    } catch (error) {
+      console.error('Failed to load recipes:', error);
+      showToast('Failed to load recipes: ' + error.message, 'error');
+    }
+  }
+
+  function getOwnerName(owner_id) {
+    if (!owner_id) return 'System';
+    const users = indexData?.userListAdmin || indexData?.userListUser || [];
+    const user = users.find(u => u.user_id === owner_id);
+    return user?.username || 'Unknown';
+  }
+
+  function getBagName(bag_id) {
+    const bag = indexData?.bagList?.find(b => b.bag_id === bag_id);
+    return bag?.bag_name || '?';
+  }
+
+  function renderRecipes() {
+    const loading = document.getElementById('recipes-loading');
+    const table = document.getElementById('recipes-table');
+    const empty = document.getElementById('recipes-empty');
+    const tbody = document.getElementById('recipes-tbody');
+
+    loading.style.display = 'none';
+
+    if (recipesData.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+    tbody.innerHTML = '';
+
+    recipesData.forEach(recipe => {
+      const row = document.createElement('tr');
+      const bags = recipe.recipe_bags?.map(rb => {
+        const name = getBagName(rb.bag_id);
+        return rb.with_acl ? `+${name}` : name;
+      }).join(', ') || '';
+
+      row.innerHTML = `
+        <td><strong>${escapeHtml(recipe.recipe_name)}</strong></td>
+        <td>${escapeHtml(recipe.description || '')}</td>
+        <td>${escapeHtml(getOwnerName(recipe.owner_id))}</td>
+        <td><span class="mws-text-muted">${escapeHtml(bags)}</span></td>
+        <td>
+          <div class="mws-btn-group">
+            <button class="mws-btn mws-btn-sm mws-btn-secondary" data-action="edit" data-id="${escapeHtml(recipe.recipe_name)}">Edit</button>
+            <button class="mws-btn mws-btn-sm mws-btn-danger" data-action="delete" data-id="${escapeHtml(recipe.recipe_name)}">Delete</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    // Event delegation for buttons
+    tbody.addEventListener('click', handleRecipeAction);
+  }
+
+  function handleRecipeAction(event) {
+    const target = event.target;
+    if (!target.matches('[data-action]')) return;
+
+    const action = target.dataset.action;
+    const id = target.dataset.id;
+
+    if (action === 'edit') {
+      openRecipeModal(id);
+    } else if (action === 'delete') {
+      deleteRecipe(id);
+    }
+  }
+
+  function openRecipeModal(recipeName) {
+    const modal = document.getElementById('recipe-modal');
+    const title = document.getElementById('recipe-modal-title');
+    const form = document.getElementById('recipe-form');
+
+    if (recipeName) {
+      currentRecipe = recipesData.find(r => r.recipe_name === recipeName);
+      title.textContent = 'Edit Recipe';
+
+      document.getElementById('recipe-name').value = currentRecipe.recipe_name;
+      document.getElementById('recipe-name').readOnly = true;
+      document.getElementById('recipe-description').value = currentRecipe.description || '';
+      document.getElementById('recipe-skip-core').checked = currentRecipe.skip_core || false;
+      document.getElementById('recipe-skip-required').checked = currentRecipe.skip_required_plugins || false;
+      document.getElementById('recipe-preload').checked = currentRecipe.preload_store || false;
+
+      const bags = currentRecipe.recipe_bags?.map(rb => {
+        const name = getBagName(rb.bag_id);
+        return rb.with_acl ? `+${name}` : name;
+      }).join('\n') || '';
+      document.getElementById('recipe-bags').value = bags;
+    } else {
+      currentRecipe = null;
+      title.textContent = 'Create Recipe';
+      form.reset();
+      document.getElementById('recipe-name').readOnly = false;
+    }
+
+    modal.classList.add('mws-show');
+  }
+
+  async function saveRecipe() {
+    const name = document.getElementById('recipe-name').value.trim();
+    const description = document.getElementById('recipe-description').value.trim();
+    const skip_core = document.getElementById('recipe-skip-core').checked;
+    const skip_required_plugins = document.getElementById('recipe-skip-required').checked;
+    const preload_store = document.getElementById('recipe-preload').checked;
+    const bagsText = document.getElementById('recipe-bags').value.trim();
+
+    if (!name) {
+      showToast('Recipe name is required', 'error');
+      return;
+    }
+
+    // Parse bags
+    const bag_names = bagsText.split('\n').filter(line => line.trim()).map(line => {
+      line = line.trim();
+      const with_acl = line.startsWith('+');
+      const bag_name = with_acl ? line.substring(1) : line;
+      return { bag_name, with_acl };
+    });
+
+    try {
+      const response = await fetch(pathPrefix + '/admin/recipe_create_or_update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify({
+          recipe_name: name,
+          description,
+          bag_names,
+          plugin_names: [],
+          skip_core,
+          skip_required_plugins,
+          preload_store,
+          custom_wiki: null,
+          create_only: !currentRecipe
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to save recipe';
+        try {
+          const data = JSON.parse(text);
+          if (data.reason) errorMsg = data.reason;
+        } catch (e) {
+          if (text && text.length < 200) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      showToast(`Recipe ${currentRecipe ? 'updated' : 'created'} successfully`, 'success');
+      closeRecipeModal();
+      loadIndex();
+    } catch (error) {
+      console.error('Failed to save recipe:', error);
+      showToast(error.message, 'error');
+    }
+  }
+
+  async function deleteRecipe(recipeName) {
+    if (!confirm(`Are you sure you want to delete recipe "${recipeName}"?`)) return;
+
+    try {
+      const response = await fetch(pathPrefix + '/admin/recipe_delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify({ recipe_name: recipeName })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to delete recipe';
+        try {
+          const data = JSON.parse(text);
+          if (data.reason) errorMsg = data.reason;
+        } catch (e) {
+          if (text && text.length < 200) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      showToast('Recipe deleted successfully', 'success');
+      loadIndex();
+    } catch (error) {
+      console.error('Failed to delete recipe:', error);
+      showToast(error.message, 'error');
+    }
+  }
+
+  function closeRecipeModal() {
+    document.getElementById('recipe-modal').classList.remove('mws-show');
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('create-recipe-btn').addEventListener('click', () => openRecipeModal(null));
+    document.getElementById('recipe-modal-close').addEventListener('click', closeRecipeModal);
+    document.getElementById('recipe-cancel-btn').addEventListener('click', closeRecipeModal);
+    document.getElementById('recipe-save-btn').addEventListener('click', saveRecipe);
+
+    // Close modal on outside click
+    document.getElementById('recipe-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'recipe-modal') closeRecipeModal();
+    });
+
+    // Show loading and load data
+    document.getElementById('recipes-loading').style.display = 'block';
+    loadIndex();
+  });
+})();
+</script>

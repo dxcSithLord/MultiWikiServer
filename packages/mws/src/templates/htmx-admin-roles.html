@@ -1,0 +1,243 @@
+<div class="mws-admin-card">
+  <div class="mws-admin-card-header">
+    <h2>Roles</h2>
+    <button class="mws-btn mws-btn-primary" id="create-role-btn">Create New Role</button>
+  </div>
+  <div style="padding: 0;">
+    <div id="roles-loading" class="mws-loading" style="display: none;">
+      <div class="mws-spinner"></div>
+      Loading roles...
+    </div>
+    <table class="mws-admin-table" id="roles-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Role Name</th>
+          <th>Description</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="roles-tbody">
+      </tbody>
+    </table>
+    <div id="roles-empty" style="padding: 2rem; text-align: center; display: none;">
+      <p class="mws-text-muted">No roles found.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Role Edit Modal -->
+<div class="mws-modal" id="role-modal">
+  <div class="mws-modal-content">
+    <div class="mws-modal-header">
+      <h3 id="role-modal-title">Create Role</h3>
+      <button class="mws-btn mws-btn-sm" id="role-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="mws-modal-body">
+      <form id="role-form">
+        <div class="mws-form-group">
+          <label for="role-name">Role Name *</label>
+          <input type="text" class="mws-form-input" id="role-name" required>
+          <small class="mws-text-muted">Note: ADMIN and USER roles cannot be modified</small>
+        </div>
+        <div class="mws-form-group">
+          <label for="role-description">Description</label>
+          <textarea class="mws-form-textarea" id="role-description" rows="3"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="mws-modal-footer">
+      <button class="mws-btn mws-btn-secondary" id="role-cancel-btn">Cancel</button>
+      <button class="mws-btn mws-btn-primary" id="role-save-btn">Save Role</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const pathPrefix = '{{pathPrefix}}';
+  let rolesData = [];
+  let currentRole = null;
+  const PROTECTED_ROLES = ['ADMIN', 'USER'];
+
+  async function loadRoles() {
+    try {
+      const response = await fetch(pathPrefix + '/admin/index_json', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(undefined)
+      });
+
+      if (!response.ok) throw new Error('Failed to load data');
+
+      const indexData = await response.json();
+      rolesData = indexData.roleList || [];
+      renderRoles();
+    } catch (error) {
+      console.error('Failed to load roles:', error);
+      showToast('Failed to load roles: ' + error.message, 'error');
+    }
+  }
+
+  function renderRoles() {
+    const loading = document.getElementById('roles-loading');
+    const table = document.getElementById('roles-table');
+    const empty = document.getElementById('roles-empty');
+    const tbody = document.getElementById('roles-tbody');
+
+    loading.style.display = 'none';
+
+    if (rolesData.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+    tbody.innerHTML = '';
+
+    rolesData.forEach(role => {
+      const row = document.createElement('tr');
+      const isProtected = PROTECTED_ROLES.includes(role.role_name);
+
+      row.innerHTML = `
+        <td>
+          <strong>${escapeHtml(role.role_name)}</strong>
+          ${isProtected ? '<span class="mws-badge">Protected</span>' : ''}
+        </td>
+        <td>${escapeHtml(role.description || '')}</td>
+        <td>
+          <div class="mws-btn-group">
+            <button class="mws-btn mws-btn-sm mws-btn-secondary"
+                    data-action="edit"
+                    data-id="${escapeHtml(role.role_id)}"
+                    ${isProtected ? 'disabled' : ''}>
+              Edit
+            </button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    tbody.addEventListener('click', handleRoleAction);
+  }
+
+  function handleRoleAction(event) {
+    const target = event.target;
+    if (!target.matches('[data-action]')) return;
+    if (target.disabled) return;
+
+    const action = target.dataset.action;
+    const id = target.dataset.id;
+
+    if (action === 'edit') {
+      openRoleModal(id);
+    }
+  }
+
+  function openRoleModal(roleId) {
+    const modal = document.getElementById('role-modal');
+    const title = document.getElementById('role-modal-title');
+    const form = document.getElementById('role-form');
+
+    if (roleId) {
+      currentRole = rolesData.find(r => r.role_id === roleId);
+
+      if (PROTECTED_ROLES.includes(currentRole.role_name)) {
+        showToast('Cannot edit protected roles (ADMIN, USER)', 'error');
+        return;
+      }
+
+      title.textContent = 'Edit Role';
+      document.getElementById('role-name').value = currentRole.role_name;
+      document.getElementById('role-description').value = currentRole.description || '';
+    } else {
+      currentRole = null;
+      title.textContent = 'Create Role';
+      form.reset();
+    }
+
+    modal.classList.add('mws-show');
+  }
+
+  async function saveRole() {
+    const name = document.getElementById('role-name').value.trim();
+    const description = document.getElementById('role-description').value.trim();
+
+    if (!name) {
+      showToast('Role name is required', 'error');
+      return;
+    }
+
+    if (PROTECTED_ROLES.includes(name.toUpperCase())) {
+      showToast('Cannot use reserved role names (ADMIN, USER)', 'error');
+      return;
+    }
+
+    try {
+      const endpoint = currentRole ? '/admin/role_update' : '/admin/role_create';
+      const body = currentRole
+        ? { role_id: currentRole.role_id, role_name: name, description }
+        : { role_name: name, description };
+
+      const response = await fetch(pathPrefix + endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Failed to save role';
+        try {
+          const data = JSON.parse(text);
+          if (data.reason) errorMsg = data.reason;
+        } catch (e) {
+          if (text && text.length < 200) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      showToast(`Role ${currentRole ? 'updated' : 'created'} successfully`, 'success');
+      closeRoleModal();
+      loadRoles();
+    } catch (error) {
+      console.error('Failed to save role:', error);
+      showToast(error.message, 'error');
+    }
+  }
+
+  function closeRoleModal() {
+    document.getElementById('role-modal').classList.remove('mws-show');
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('create-role-btn').addEventListener('click', () => openRoleModal(null));
+    document.getElementById('role-modal-close').addEventListener('click', closeRoleModal);
+    document.getElementById('role-cancel-btn').addEventListener('click', closeRoleModal);
+    document.getElementById('role-save-btn').addEventListener('click', saveRole);
+
+    document.getElementById('role-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'role-modal') closeRoleModal();
+    });
+
+    document.getElementById('roles-loading').style.display = 'block';
+    loadRoles();
+  });
+})();
+</script>

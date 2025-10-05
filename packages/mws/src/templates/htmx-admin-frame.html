@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{pageTitle}} - MWS Admin</title>
+  <link rel="stylesheet" href="{{pathPrefix}}/admin-htmx/styles.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <nav class="mws-admin-navbar">
+    <div style="display: flex; align-items: center;">
+      <button class="mws-btn mws-btn-secondary" id="menu-toggle-btn" style="margin-right: 1rem;">
+        ☰
+      </button>
+      <h1>
+        <strong>MWS Admin</strong>
+      </h1>
+    </div>
+    <div class="mws-admin-nav-right">
+      <a href="{{pathPrefix}}/admin">Switch to React Admin</a>
+
+      <!-- User Dropdown -->
+      <div class="mws-user-dropdown">
+        <button class="mws-btn mws-btn-secondary" id="user-menu-btn">
+          <span>{{username}}</span>
+          <span style="margin-left: 0.5rem;">▼</span>
+        </button>
+        <div class="mws-dropdown-menu" id="user-menu">
+          <a href="{{pathPrefix}}/admin-htmx/profile" class="mws-dropdown-item">
+            <span>👤</span> Profile
+          </a>
+          <div class="mws-dropdown-divider"></div>
+          <button id="logout-btn" class="mws-dropdown-item">
+            <span>🚪</span> Logout
+          </button>
+          <div class="mws-dropdown-divider"></div>
+          <div class="mws-dropdown-item disabled" style="font-size: 0.8rem; color: #757575;">
+            <div>TW5: <span id="tw5-version">--</span></div>
+            <div>MWS: <span id="mws-version">--</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Layout with Sidebar -->
+  <div class="mws-admin-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="mws-admin-sidebar" id="sidebar">
+      <nav class="mws-sidebar-nav">
+        <a href="{{pathPrefix}}/admin-htmx" class="mws-sidebar-item {{#if isRecipes}}mws-active{{/if}}">
+          <span class="mws-sidebar-icon">📋</span>
+          <span class="mws-sidebar-text">Recipes</span>
+        </a>
+        <a href="{{pathPrefix}}/admin-htmx/bags" class="mws-sidebar-item {{#if isBags}}mws-active{{/if}}">
+          <span class="mws-sidebar-icon">🎒</span>
+          <span class="mws-sidebar-text">Bags</span>
+        </a>
+
+        {{#if isAdmin}}
+        <div class="mws-sidebar-divider"></div>
+        <a href="{{pathPrefix}}/admin-htmx/users" class="mws-sidebar-item {{#if isUsers}}mws-active{{/if}}">
+          <span class="mws-sidebar-icon">👥</span>
+          <span class="mws-sidebar-text">Users</span>
+        </a>
+        <a href="{{pathPrefix}}/admin-htmx/roles" class="mws-sidebar-item {{#if isRoles}}mws-active{{/if}}">
+          <span class="mws-sidebar-icon">🔐</span>
+          <span class="mws-sidebar-text">Roles</span>
+        </a>
+        <div class="mws-sidebar-divider"></div>
+        <a href="{{pathPrefix}}/admin-htmx/settings" class="mws-sidebar-item {{#if isSettings}}mws-active{{/if}}">
+          <span class="mws-sidebar-icon">⚙️</span>
+          <span class="mws-sidebar-text">Settings</span>
+        </a>
+        {{/if}}
+      </nav>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="mws-admin-content">
+      {{content}}
+    </main>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="mws-toast">
+    <span id="toast-message"></span>
+    <button class="mws-btn mws-btn-sm" id="toast-close-btn" aria-label="Close">&times;</button>
+  </div>
+
+  <script>
+    const pathPrefix = '{{pathPrefix}}';
+
+    // Toast functions
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const messageEl = document.getElementById('toast-message');
+      messageEl.textContent = message;
+      toast.className = `mws-toast mws-show mws-${type}`;
+      setTimeout(() => hideToast(), 5000);
+    }
+
+    function hideToast() {
+      document.getElementById('toast').classList.remove('mws-show');
+    }
+
+    // Initialize on DOM ready
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Menu toggle
+      const menuToggleBtn = document.getElementById('menu-toggle-btn');
+      const sidebar = document.getElementById('sidebar');
+      if (menuToggleBtn && sidebar) {
+        menuToggleBtn.addEventListener('click', () => {
+          sidebar.classList.toggle('mws-collapsed');
+        });
+      }
+
+      // User menu button
+      const userMenuBtn = document.getElementById('user-menu-btn');
+      const userMenu = document.getElementById('user-menu');
+      if (userMenuBtn && userMenu) {
+        userMenuBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          userMenu.classList.toggle('mws-show');
+        });
+      }
+
+      // Logout handler
+      const logoutBtn = document.getElementById('logout-btn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+          try {
+            const response = await fetch(pathPrefix + '/logout', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'TiddlyWiki'
+              },
+              body: JSON.stringify(undefined)
+            });
+
+            if (response.ok) {
+              window.location.href = pathPrefix + '/';
+            } else {
+              showToast('Logout encountered an issue. Redirecting to login...', 'error');
+              setTimeout(() => {
+                window.location.href = pathPrefix + '/login';
+              }, 2000);
+            }
+          } catch (error) {
+            console.error('Logout error:', error);
+            showToast('Network error during logout. Please try again.', 'error');
+          }
+        });
+      }
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', (e) => {
+        const dropdown = document.querySelector('.mws-user-dropdown');
+        if (dropdown && userMenu && !dropdown.contains(e.target)) {
+          userMenu.classList.remove('mws-show');
+        }
+      });
+
+      // Close toast button
+      const toastCloseBtn = document.getElementById('toast-close-btn');
+      if (toastCloseBtn) {
+        toastCloseBtn.addEventListener('click', hideToast);
+      }
+
+      // Load version info
+      try {
+        const response = await fetch(pathPrefix + '/admin/index_json', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'TiddlyWiki',
+            'Referer': window.location.href
+          },
+          body: JSON.stringify(undefined)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.versions) {
+            document.getElementById('tw5-version').textContent = data.versions.tw5 || '--';
+            document.getElementById('mws-version').textContent = data.versions.mws || '--';
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load version info:', error);
+      }
+    });
+  </script>
+</body>
+</html>
