@@ -3,6 +3,8 @@ import { registerZodRoutes, RouterKeyMap, RouterRouteMap, ServerRoute } from "@t
 import { admin } from "./admin-utils";
 import { assertSignature } from "../services/sessions";
 import { serverEvents } from "@tiddlywiki/events";
+import { randomInt } from "node:crypto";
+import { Prisma } from "@tiddlywiki/mws-prisma";
 
 
 export const UserKeyMap: RouterKeyMap<UserManager, true> = {
@@ -12,22 +14,69 @@ export const UserKeyMap: RouterKeyMap<UserManager, true> = {
   user_list: true,
   user_update: true,
   user_update_password: true,
+  user_generate_temp_password: true,
   role_create: true,
   role_update: true,
 }
 
 export type UserManagerMap = RouterRouteMap<UserManager>;
 
+/**
+ * Handle Prisma unique constraint violations and convert to user-friendly error messages
+ */
+function handlePrismaUniqueConstraintError(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    const target = error.meta?.target;
+    if (Array.isArray(target)) {
+      if (target.includes('email')) {
+        throw "Email address is already in use";
+      } else if (target.includes('username')) {
+        throw "Username is already taken";
+      }
+    }
+    throw "A user with these details already exists";
+  }
+  throw error;
+}
+
 serverEvents.on("mws.routes", (root) => {
   UserManager.defineRoutes(root);
 });
 
 export class UserManager {
+  // In-memory rate limiting for password generation (user_id -> last generation timestamp)
+  private static passwordGenerationCooldowns = new Map<string, number>();
+  private static readonly PASSWORD_GENERATION_COOLDOWN_MS = 60000; // 1 minute
+
   static defineRoutes(root: ServerRoute) {
     registerZodRoutes(root, new UserManager(), Object.keys(UserKeyMap));
   }
 
   constructor() { }
+
+  /**
+   * Check if password generation is allowed for a user (rate limiting)
+   */
+  private checkPasswordGenerationRateLimit(user_id: string): void {
+    const lastGeneration = UserManager.passwordGenerationCooldowns.get(user_id);
+    const now = Date.now();
+
+    if (lastGeneration && now - lastGeneration < UserManager.PASSWORD_GENERATION_COOLDOWN_MS) {
+      const remainingSeconds = Math.ceil((UserManager.PASSWORD_GENERATION_COOLDOWN_MS - (now - lastGeneration)) / 1000);
+      throw `Please wait ${remainingSeconds} seconds before generating another password for this user`;
+    }
+
+    // Record this generation
+    UserManager.passwordGenerationCooldowns.set(user_id, now);
+
+    // Clean up old entries (older than 5 minutes)
+    const cutoff = now - 300000;
+    for (const [uid, timestamp] of UserManager.passwordGenerationCooldowns.entries()) {
+      if (timestamp < cutoff) {
+        UserManager.passwordGenerationCooldowns.delete(uid);
+      }
+    }
+  }
 
   user_edit_data = admin(z => z.object({
     user_id: z.prismaField("Users", "user_id", "string")
@@ -91,12 +140,16 @@ export class UserManager {
 
     state.okAdmin();
 
-    const user = await prisma.users.create({
-      data: { username, email, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
-      select: { user_id: true, created_at: true }
-    });
+    try {
+      const user = await prisma.users.create({
+        data: { username, email, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
+        select: { user_id: true, created_at: true }
+      });
 
-    return user;
+      return user;
+    } catch (error) {
+      handlePrismaUniqueConstraintError(error);
+    }
   });
 
   user_update = admin(z => z.object({
@@ -109,12 +162,33 @@ export class UserManager {
 
     state.okAdmin();
 
-    if (state.user.user_id === user_id) throw "Admin cannot update themselves";
+    // Check if admin is updating themselves
+    if (state.user.user_id === user_id) {
+      // Get current roles to see if they're being changed
+      const currentUser = await prisma.users.findUnique({
+        where: { user_id },
+        select: { roles: { select: { role_id: true } } }
+      });
 
-    await prisma.users.update({
-      where: { user_id },
-      data: { username, email, roles: { set: role_ids.map(role_id => ({ role_id })) } }
-    });
+      const currentRoleIds = currentUser?.roles.map(r => r.role_id).sort() || [];
+      const newRoleIds = [...role_ids].sort();
+
+      // Prevent admins from changing their own roles (to avoid lock-out)
+      if (JSON.stringify(currentRoleIds) !== JSON.stringify(newRoleIds)) {
+        throw "Admin cannot change their own roles";
+      }
+
+      // Allow email/username updates for self
+    }
+
+    try {
+      await prisma.users.update({
+        where: { user_id },
+        data: { username, email, roles: { set: role_ids.map(role_id => ({ role_id })) } }
+      });
+    } catch (error) {
+      handlePrismaUniqueConstraintError(error);
+    }
 
     return null;
   });
@@ -189,6 +263,41 @@ export class UserManager {
     }
 
     return null;
+  });
+
+  user_generate_temp_password = admin(z => z.object({
+    user_id: z.prismaField("Users", "user_id", "string"),
+  }), async (state, prisma) => {
+    const { user_id } = state.data;
+
+    state.okAdmin();
+
+    // Check rate limiting to prevent abuse
+    this.checkPasswordGenerationRateLimit(user_id);
+
+    // Check if user exists
+    const userExists = await prisma.users.count({ where: { user_id } });
+    if (!userExists) throw "User does not exist";
+
+    // Generate a cryptographically secure random temporary password (16 chars, readable but secure)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*';
+    const tempPassword = Array.from(
+      { length: 16 },
+      () => chars[randomInt(0, chars.length)]
+    ).join('');
+
+    // Use PasswordService.PasswordCreation to create OPAQUE registration server-side
+    // This is designed for temporary passwords
+    const registrationRecord = await state.PasswordService.PasswordCreation(user_id, tempPassword);
+
+    // Store the OPAQUE registration record
+    await prisma.users.update({
+      where: { user_id },
+      data: { password: registrationRecord }
+    });
+
+    // Return the temporary password to the admin (only shown once)
+    return { temporaryPassword: tempPassword };
   });
 
   role_create = admin(z => z.object({

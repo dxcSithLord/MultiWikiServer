@@ -3,344 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Users - MWS Admin (HTMX Proof-of-Concept)</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #f5f5f5;
-      color: #333;
-    }
-
-    .navbar {
-      background: #1976d2;
-      color: white;
-      padding: 1rem 2rem;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .navbar h1 {
-      font-size: 1.5rem;
-      display: inline-block;
-    }
-
-    .navbar small {
-      opacity: 0.8;
-      font-size: 0.875rem;
-    }
-
-    .navbar a {
-      color: white;
-      text-decoration: none;
-      margin-left: 2rem;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 2rem auto;
-      padding: 0 1rem;
-    }
-
-    .card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      overflow: hidden;
-    }
-
-    .card-header {
-      padding: 1.5rem;
-      border-bottom: 1px solid #e0e0e0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .card-header h2 {
-      font-size: 1.5rem;
-      font-weight: 500;
-    }
-
-    .btn {
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.875rem;
-      font-weight: 500;
-      transition: all 0.2s;
-    }
-
-    .btn-primary {
-      background: #1976d2;
-      color: white;
-    }
-
-    .btn-primary:hover {
-      background: #1565c0;
-    }
-
-    .btn-secondary {
-      background: #757575;
-      color: white;
-    }
-
-    .btn-secondary:hover {
-      background: #616161;
-    }
-
-    .btn-danger {
-      background: #d32f2f;
-      color: white;
-    }
-
-    .btn-danger:hover {
-      background: #c62828;
-    }
-
-    .btn-sm {
-      padding: 0.25rem 0.75rem;
-      font-size: 0.8rem;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th {
-      text-align: left;
-      padding: 1rem;
-      background: #f5f5f5;
-      font-weight: 500;
-      border-bottom: 2px solid #e0e0e0;
-    }
-
-    td {
-      padding: 1rem;
-      border-bottom: 1px solid #e0e0e0;
-    }
-
-    tr:hover {
-      background: #fafafa;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 0.25rem 0.5rem;
-      background: #757575;
-      color: white;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      margin-right: 0.25rem;
-    }
-
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal.show {
-      display: flex;
-    }
-
-    .modal-content {
-      background: white;
-      border-radius: 8px;
-      width: 90%;
-      max-width: 500px;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    .modal-header {
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid #e0e0e0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .modal-body {
-      padding: 1.5rem;
-    }
-
-    .modal-footer {
-      padding: 1rem 1.5rem;
-      border-top: 1px solid #e0e0e0;
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.5rem;
-    }
-
-    .form-group {
-      margin-bottom: 1rem;
-    }
-
-    label {
-      display: block;
-      margin-bottom: 0.5rem;
-      font-weight: 500;
-      font-size: 0.875rem;
-    }
-
-    input, select, textarea {
-      width: 100%;
-      padding: 0.5rem;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 1rem;
-    }
-
-    input:focus, select:focus, textarea:focus {
-      outline: none;
-      border-color: #1976d2;
-    }
-
-    .spinner {
-      display: inline-block;
-      width: 1rem;
-      height: 1rem;
-      border: 2px solid #f3f3f3;
-      border-top: 2px solid #1976d2;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    .loading {
-      text-align: center;
-      padding: 2rem;
-    }
-
-    .text-muted {
-      color: #757575;
-    }
-
-    .toast {
-      position: fixed;
-      top: 80px;
-      right: 20px;
-      background: white;
-      border-radius: 4px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      padding: 1rem 1.5rem;
-      z-index: 2000;
-      display: none;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .toast.show {
-      display: flex;
-    }
-
-    .toast.success {
-      border-left: 4px solid #4caf50;
-    }
-
-    .toast.error {
-      border-left: 4px solid #f44336;
-    }
-
-    .btn-group {
-      display: inline-flex;
-      gap: 0.5rem;
-    }
-
-    .user-dropdown {
-      position: relative;
-    }
-
-    .dropdown-menu {
-      display: none;
-      position: absolute;
-      right: 0;
-      top: 100%;
-      margin-top: 0.5rem;
-      background: white;
-      border-radius: 4px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      min-width: 200px;
-      z-index: 1000;
-    }
-
-    .dropdown-menu.show {
-      display: block;
-    }
-
-    .dropdown-item {
-      display: block;
-      width: 100%;
-      padding: 0.75rem 1rem;
-      border: none;
-      background: none;
-      text-align: left;
-      cursor: pointer;
-      color: #333;
-      text-decoration: none;
-      transition: background 0.2s;
-    }
-
-    .dropdown-item:hover:not(.disabled) {
-      background: #f5f5f5;
-    }
-
-    .dropdown-item.disabled {
-      cursor: default;
-      opacity: 0.6;
-    }
-
-    .dropdown-item span {
-      margin-right: 0.5rem;
-    }
-
-    .dropdown-divider {
-      height: 1px;
-      background: #e0e0e0;
-      margin: 0.25rem 0;
-    }
-  </style>
+  <title>Users - MWS Admin</title>
+  <link rel="stylesheet" href="{{pathPrefix}}/admin-htmx/styles.css">
 </head>
 <body>
   <!-- Navigation -->
-  <nav class="navbar">
+  <nav class="mws-admin-navbar">
     <h1>
       <strong>MWS Admin</strong>
-      <small>(HTMX Proof-of-Concept)</small>
+      <small>(HTMX)</small>
     </h1>
-    <div style="float: right; display: flex; align-items: center; gap: 1rem;">
+    <div class="mws-admin-nav-right">
       <a href="{{pathPrefix}}/admin">Switch to React Admin</a>
 
       <!-- User Dropdown -->
-      <div class="user-dropdown">
-        <button class="btn btn-secondary" id="user-menu-btn">
+      <div class="mws-user-dropdown">
+        <button class="mws-btn mws-btn-secondary" id="user-menu-btn">
           <span>{{username}}</span>
           <span style="margin-left: 0.5rem;">▼</span>
         </button>
-        <div class="dropdown-menu" id="user-menu">
-          <a href="{{pathPrefix}}/admin-htmx/profile" class="dropdown-item">
+        <div class="mws-dropdown-menu" id="user-menu">
+          <a href="{{pathPrefix}}/admin-htmx/profile" class="mws-dropdown-item">
             <span>👤</span> Profile
           </a>
-          <div class="dropdown-divider"></div>
-          <button id="logout-btn" class="dropdown-item">
+          <div class="mws-dropdown-divider"></div>
+          <button id="logout-btn" class="mws-dropdown-item">
             <span>🚪</span> Logout
           </button>
-          <div class="dropdown-divider"></div>
-          <div class="dropdown-item disabled" style="font-size: 0.8rem; color: #757575;">
+          <div class="mws-dropdown-divider"></div>
+          <div class="mws-dropdown-item disabled" style="font-size: 0.8rem; color: #757575;">
             <div>TW5: <span id="tw5-version">--</span></div>
             <div>MWS: <span id="mws-version">--</span></div>
           </div>
@@ -350,15 +41,15 @@
   </nav>
 
   <!-- Main Content -->
-  <div class="container">
-    <div class="card">
-      <div class="card-header">
+  <div class="mws-admin-container">
+    <div class="mws-admin-card">
+      <div class="mws-admin-card-header">
         <h2>Users</h2>
-        <button id="create-user-btn" class="btn btn-primary">
+        <button id="create-user-btn" class="mws-btn mws-btn-primary">
           Create New User
         </button>
       </div>
-      <table id="users-table">
+      <table id="users-table" class="mws-admin-table">
         <thead>
           <tr>
             <th>Username</th>
@@ -371,8 +62,8 @@
         </thead>
         <tbody id="users-tbody">
           <tr>
-            <td colspan="6" class="loading">
-              <div class="spinner"></div>
+            <td colspan="6" class="mws-loading">
+              <div class="mws-spinner"></div>
               <div>Loading users...</div>
             </td>
           </tr>
@@ -382,37 +73,47 @@
   </div>
 
   <!-- Create/Edit User Modal -->
-  <div id="userModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
+  <div id="userModal" class="mws-modal">
+    <div class="mws-modal-content">
+      <div class="mws-modal-header">
         <h3 id="modal-title">Create User</h3>
-        <button class="btn btn-sm" data-action="close-modal" aria-label="Close">&times;</button>
+        <button class="mws-btn mws-btn-sm" data-action="close-modal" aria-label="Close">&times;</button>
       </div>
-      <div class="modal-body">
+      <div class="mws-modal-body">
         <form id="userForm" onsubmit="handleUserSubmit(event)">
           <input type="hidden" id="user_id" name="user_id">
 
-          <div class="form-group">
+          <div class="mws-form-group">
             <label for="username">Username</label>
-            <input type="text" id="username" name="username" required>
+            <input type="text" id="username" name="username" class="mws-form-input" required>
           </div>
 
-          <div class="form-group">
+          <div class="mws-form-group">
             <label for="email">Email</label>
-            <input type="email" id="email" name="email" required>
+            <input type="email" id="email" name="email" class="mws-form-input" required>
           </div>
 
-          <div class="form-group">
+          <div class="mws-form-group">
             <label for="roles">Roles (Hold Ctrl/Cmd for multiple)</label>
-            <select id="roles" name="role_ids" multiple size="3">
+            <select id="roles" name="role_ids" class="mws-form-select" multiple size="3">
               <!-- Populated dynamically -->
             </select>
           </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-action="close-modal">Cancel</button>
-            <button type="submit" class="btn btn-primary">
-              <span id="submit-spinner" class="spinner" style="display:none;"></span>
+          <div class="mws-form-group" id="password-section" style="display:none;">
+            <label>Temporary Password</label>
+            <button type="button" class="mws-btn mws-btn-secondary" id="generate-temp-password-btn">
+              Generate Temporary Password
+            </button>
+            <small class="mws-text-muted" style="display:block;margin-top:0.5rem;">
+              Generates a random password that will be shown once
+            </small>
+          </div>
+
+          <div class="mws-modal-footer">
+            <button type="button" class="mws-btn mws-btn-secondary" data-action="close-modal">Cancel</button>
+            <button type="submit" class="mws-btn mws-btn-primary">
+              <span id="submit-spinner" class="mws-spinner" style="display:none;"></span>
               <span id="submit-text">Create User</span>
             </button>
           </div>
@@ -421,10 +122,32 @@
     </div>
   </div>
 
+  <!-- Temporary Password Modal -->
+  <div id="tempPasswordModal" class="mws-modal">
+    <div class="mws-modal-content" style="max-width: 500px;">
+      <div class="mws-modal-header">
+        <h3>Temporary Password Generated</h3>
+        <button class="mws-btn mws-btn-sm" data-action="close-temp-password-modal" aria-label="Close">&times;</button>
+      </div>
+      <div class="mws-modal-body">
+        <p><strong>Important:</strong> This password will only be shown once. Copy it now and send it to the user securely.</p>
+        <div style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin: 1rem 0; font-family: monospace; font-size: 1.2rem; text-align: center; word-break: break-all;">
+          <span id="temp-password-display"></span>
+        </div>
+        <button type="button" class="mws-btn mws-btn-secondary" id="copy-temp-password-btn" style="width: 100%;">
+          Copy to Clipboard
+        </button>
+      </div>
+      <div class="mws-modal-footer">
+        <button type="button" class="mws-btn mws-btn-primary" data-action="close-temp-password-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
-  <div id="toast" class="toast">
+  <div id="toast" class="mws-toast">
     <span id="toast-message"></span>
-    <button class="btn btn-sm" id="toast-close-btn" aria-label="Close">&times;</button>
+    <button class="mws-btn mws-btn-sm" id="toast-close-btn" aria-label="Close">&times;</button>
   </div>
 
   <script>
@@ -454,18 +177,26 @@
         let errorMessage = 'An error occurred. Please try again.';
 
         try {
-          const errorData = await response.json();
-          if (errorData.reason && typeof errorData.reason === 'string') {
-            errorMessage = errorData.reason;
-          } else if (errorData.message && typeof errorData.message === 'string') {
-            errorMessage = errorData.message;
+          // Read response as text first
+          const text = await response.text();
+
+          // Try to parse as JSON
+          try {
+            const errorData = JSON.parse(text);
+            if (errorData.reason && typeof errorData.reason === 'string') {
+              errorMessage = errorData.reason;
+            } else if (errorData.message && typeof errorData.message === 'string') {
+              errorMessage = errorData.message;
+            }
+          } catch (jsonError) {
+            // Not JSON, use text if it's short
+            if (text && text.length < 200) {
+              errorMessage = text;
+            }
           }
         } catch (e) {
-          // Failed to parse JSON, try text
-          const text = await response.text();
-          if (text && text.length < 200) {
-            errorMessage = text;
-          }
+          // Failed to read response at all
+          console.error('Failed to read error response:', e);
         }
 
         throw new Error(errorMessage);
@@ -489,7 +220,7 @@
       const tbody = document.getElementById('users-tbody');
 
       if (allUsers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;" class="text-muted">No users found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;" class="mws-text-muted">No users found</td></tr>';
         return;
       }
 
@@ -498,14 +229,14 @@
           <td><strong>${escapeHtml(user.username)}</strong></td>
           <td>${escapeHtml(user.email)}</td>
           <td>
-            ${user.roles.map(role => `<span class="badge">${escapeHtml(role.role_name)}</span>`).join('')}
+            ${user.roles.map(role => `<span class="mws-badge">${escapeHtml(role.role_name)}</span>`).join('')}
           </td>
-          <td>${user.last_login ? formatDate(user.last_login) : '<span class="text-muted">Never</span>'}</td>
+          <td>${user.last_login ? formatDate(user.last_login) : '<span class="mws-text-muted">Never</span>'}</td>
           <td>${formatDate(user.created_at)}</td>
           <td>
-            <div class="btn-group">
-              <button class="btn btn-primary btn-sm" data-action="edit" data-user-id="${escapeHtml(user.user_id)}">Edit</button>
-              <button class="btn btn-danger btn-sm" data-action="delete" data-user-id="${escapeHtml(user.user_id)}" data-username="${escapeHtml(user.username)}">Delete</button>
+            <div class="mws-btn-group">
+              <button class="mws-btn mws-btn-primary mws-btn-sm" data-action="edit" data-user-id="${escapeHtml(user.user_id)}">Edit</button>
+              <button class="mws-btn mws-btn-danger mws-btn-sm" data-action="delete" data-user-id="${escapeHtml(user.user_id)}" data-username="${escapeHtml(user.username)}">Delete</button>
             </div>
           </td>
         </tr>
@@ -529,7 +260,7 @@
         if (!data.isAdmin) {
           showToast('Admin access required to manage users', 'error');
           document.getElementById('users-tbody').innerHTML =
-            '<tr><td colspan="6" style="text-align: center;" class="text-muted">Admin access required</td></tr>';
+            '<tr><td colspan="6" style="text-align: center;" class="mws-text-muted">Admin access required</td></tr>';
           return false;
         }
         return true;
@@ -547,7 +278,8 @@
       document.getElementById('userForm').reset();
       document.getElementById('user_id').value = '';
       populateRoles([]);
-      document.getElementById('userModal').classList.add('show');
+      document.getElementById('password-section').style.display = 'none';
+      document.getElementById('userModal').classList.add('mws-show');
     }
 
     // Show edit modal
@@ -564,7 +296,10 @@
         allRoles = data.allRoles;
         populateRoles(data.user.roles.map(r => r.role_id));
 
-        document.getElementById('userModal').classList.add('show');
+        // Show password section for editing
+        document.getElementById('password-section').style.display = 'block';
+
+        document.getElementById('userModal').classList.add('mws-show');
       } catch (error) {
         showToast('Failed to load user: ' + error.message, 'error');
       }
@@ -582,7 +317,57 @@
 
     // Close modal
     function closeModal() {
-      document.getElementById('userModal').classList.remove('show');
+      document.getElementById('userModal').classList.remove('mws-show');
+    }
+
+    // Close temp password modal
+    function closeTempPasswordModal() {
+      document.getElementById('tempPasswordModal').classList.remove('mws-show');
+    }
+
+    // Generate temporary password
+    async function generateTempPassword() {
+      const userId = document.getElementById('user_id').value;
+      if (!userId) {
+        showToast('Please save the user first before generating a password', 'error');
+        return;
+      }
+
+      try {
+        const result = await apiRequest('user_generate_temp_password', { user_id: userId });
+
+        // Show the temporary password in a modal
+        document.getElementById('temp-password-display').textContent = result.temporaryPassword;
+        document.getElementById('tempPasswordModal').classList.add('mws-show');
+
+        showToast('Temporary password generated successfully', 'success');
+      } catch (error) {
+        showToast('Failed to generate password: ' + error.message, 'error');
+      }
+    }
+
+    // Copy temporary password to clipboard
+    async function copyTempPassword() {
+      const password = document.getElementById('temp-password-display').textContent;
+      try {
+        await navigator.clipboard.writeText(password);
+        showToast('Password copied to clipboard', 'success');
+      } catch (error) {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = password;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast('Password copied to clipboard', 'success');
+        } catch (e) {
+          showToast('Failed to copy password', 'error');
+        }
+        document.body.removeChild(textarea);
+      }
     }
 
     // Handle form submission
@@ -643,14 +428,14 @@
       const messageEl = document.getElementById('toast-message');
 
       messageEl.textContent = message;
-      toast.className = `toast show ${type}`;
+      toast.className = `mws-toast mws-show mws-${type}`;
 
       setTimeout(() => hideToast(), 5000);
     }
 
     // Hide toast
     function hideToast() {
-      document.getElementById('toast').classList.remove('show');
+      document.getElementById('toast').classList.remove('mws-show');
     }
 
     // Utility functions
@@ -664,62 +449,7 @@
       return new Date(dateString).toLocaleDateString();
     }
 
-    // User menu button handler
-    document.getElementById('user-menu-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const menu = document.getElementById('user-menu');
-      menu.classList.toggle('show');
-    });
-
-    // Logout button handler
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-      try {
-        const response = await fetch(pathPrefix + '/logout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'TiddlyWiki'
-          },
-          body: JSON.stringify(null)
-        });
-
-        if (response.ok) {
-          // Redirect to home page after logout
-          window.location.href = pathPrefix + '/';
-        } else {
-          showToast('Logout failed', 'error');
-        }
-      } catch (error) {
-        console.error('Logout error:', error);
-        showToast('Logout failed: ' + error.message, 'error');
-      }
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      const dropdown = document.querySelector('.user-dropdown');
-      const menu = document.getElementById('user-menu');
-
-      if (dropdown && !dropdown.contains(e.target)) {
-        menu.classList.remove('show');
-      }
-    });
-
-    // Event delegation for user action buttons
-    document.getElementById('users-tbody').addEventListener('click', (e) => {
-      const target = e.target;
-      if (target.tagName === 'BUTTON' && target.dataset.action) {
-        const action = target.dataset.action;
-        const userId = target.dataset.userId;
-
-        if (action === 'edit' && userId) {
-          showEditModal(userId);
-        } else if (action === 'delete' && userId) {
-          const username = target.dataset.username;
-          deleteUser(userId, username);
-        }
-      }
-    });
+    // Event delegation for user action buttons (moved to DOMContentLoaded below)
 
     // Initialize all event listeners on DOMContentLoaded
     document.addEventListener('DOMContentLoaded', async () => {
@@ -746,7 +476,7 @@
       if (userMenuBtn && userMenu) {
         userMenuBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          userMenu.classList.toggle('show');
+          userMenu.classList.toggle('mws-show');
         });
       }
 
@@ -782,9 +512,9 @@
 
       // Close dropdown when clicking outside
       document.addEventListener('click', (e) => {
-        const dropdown = document.querySelector('.user-dropdown');
+        const dropdown = document.querySelector('.mws-user-dropdown');
         if (dropdown && userMenu && !dropdown.contains(e.target)) {
-          userMenu.classList.remove('show');
+          userMenu.classList.remove('mws-show');
         }
       });
 
@@ -793,7 +523,32 @@
         if (e.target.closest('[data-action="close-modal"]')) {
           closeModal();
         }
+        if (e.target.closest('[data-action="close-temp-password-modal"]')) {
+          closeTempPasswordModal();
+        }
       });
+
+      // Generate temporary password button
+      const generateTempPasswordBtn = document.getElementById('generate-temp-password-btn');
+      if (generateTempPasswordBtn) {
+        generateTempPasswordBtn.addEventListener('click', generateTempPassword);
+      }
+
+      // Copy temporary password button
+      const copyTempPasswordBtn = document.getElementById('copy-temp-password-btn');
+      if (copyTempPasswordBtn) {
+        copyTempPasswordBtn.addEventListener('click', copyTempPassword);
+      }
+
+      // Close temp password modal when clicking backdrop
+      const tempPasswordModal = document.getElementById('tempPasswordModal');
+      if (tempPasswordModal) {
+        tempPasswordModal.addEventListener('click', (e) => {
+          if (e.target === e.currentTarget) {
+            closeTempPasswordModal();
+          }
+        });
+      }
 
       // Event delegation for user action buttons
       const usersTbody = document.getElementById('users-tbody');

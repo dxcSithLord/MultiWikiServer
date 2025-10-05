@@ -1,0 +1,398 @@
+/**
+ * MWS Admin HTMX Styles
+ * Aligned with React Admin design system
+ */
+
+/* Global Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+}
+
+/* Navigation Header - aligned with React admin */
+.mws-admin-navbar {
+  background: #f0f0f0;
+  color: #333;
+  padding: 10px 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mws-admin-navbar h1 {
+  font-size: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mws-admin-navbar small {
+  opacity: 0.6;
+  font-size: 0.875rem;
+  font-weight: normal;
+}
+
+.mws-admin-navbar a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.mws-admin-navbar a:hover {
+  text-decoration: underline;
+}
+
+.mws-admin-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Container */
+.mws-admin-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 15px;
+}
+
+/* Card - aligned with React admin */
+.mws-admin-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.mws-admin-card-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mws-admin-card-header h2 {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+/* Buttons - aligned with React admin colors */
+.mws-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.mws-btn-primary {
+  background: #3498db;
+  color: white;
+}
+
+.mws-btn-primary:hover {
+  background: #2980b9;
+}
+
+.mws-btn-secondary {
+  background: #757575;
+  color: white;
+}
+
+.mws-btn-secondary:hover {
+  background: #616161;
+}
+
+.mws-btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+.mws-btn-danger:hover {
+  background: #c0392b;
+}
+
+.mws-btn-sm {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.mws-btn-group {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+/* Table */
+.mws-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mws-admin-table th {
+  text-align: left;
+  padding: 1rem;
+  background: #f8f9fa;
+  font-weight: 500;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.mws-admin-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.mws-admin-table tr:hover {
+  background: #fafafa;
+}
+
+/* Badge */
+.mws-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: #f1f1f1;
+  color: #333;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  margin-right: 0.25rem;
+}
+
+/* Modal */
+.mws-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.mws-modal.mws-show {
+  display: flex;
+}
+
+.mws-modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.mws-modal-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mws-modal-header h3 {
+  color: #3498db;
+  font-size: 1.2rem;
+}
+
+.mws-modal-body {
+  padding: 1.5rem;
+}
+
+.mws-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Forms - aligned with React admin */
+.mws-form-group {
+  margin-bottom: 1rem;
+}
+
+.mws-form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: #555;
+}
+
+.mws-form-input,
+.mws-form-select,
+.mws-form-textarea {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.mws-form-input:focus,
+.mws-form-select:focus,
+.mws-form-textarea:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+/* Spinner */
+.mws-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  animation: mws-spin 1s linear infinite;
+}
+
+@keyframes mws-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.mws-loading {
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Text utilities */
+.mws-text-muted {
+  color: #757575;
+}
+
+/* Toast - aligned with React admin flash messages */
+.mws-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  padding: 1rem;
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  gap: 1rem;
+  max-width: 350px;
+}
+
+.mws-toast.mws-show {
+  display: flex;
+}
+
+.mws-toast.mws-success {
+  border-left: 4px solid #2ecc71;
+}
+
+.mws-toast.mws-error {
+  border-left: 4px solid #e74c3c;
+}
+
+/* User Dropdown - aligned with React admin dropdown */
+.mws-user-dropdown {
+  position: relative;
+}
+
+.mws-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 0.5rem;
+  background: #f1f1f1;
+  border-radius: 4px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+  min-width: 200px;
+  z-index: 1000;
+}
+
+.mws-dropdown-menu.mws-show {
+  display: block;
+}
+
+.mws-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: black;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.mws-dropdown-item:hover:not(.disabled) {
+  background: #ddd;
+}
+
+.mws-dropdown-item.disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.mws-dropdown-item span {
+  margin-right: 0.5rem;
+}
+
+.mws-dropdown-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 0.25rem 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .mws-admin-navbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .mws-admin-nav-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .mws-admin-container {
+    padding: 0 10px;
+  }
+
+  .mws-admin-card-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .mws-admin-card-header .mws-btn {
+    width: 100%;
+  }
+
+  .mws-admin-table {
+    font-size: 0.875rem;
+  }
+
+  .mws-admin-table th,
+  .mws-admin-table td {
+    padding: 0.5rem;
+  }
+}

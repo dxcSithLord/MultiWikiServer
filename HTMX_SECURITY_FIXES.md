@@ -155,9 +155,10 @@ if (!response.ok) {
 
 **Issue**: Template was served to all authenticated users, then checked admin status via API call - wasting resources and providing poor UX.
 
-**Location**: `packages/mws/src/managers/admin-htmx.ts:24-55`
+**Location**: `packages/mws/src/managers/admin-htmx.ts:77-111`
 
 **Fix Applied**:
+- Check authentication first and redirect unauthenticated users to login
 - Check `state.user.isAdmin` before serving template
 - Return 403 Forbidden page immediately for non-admins
 - Emit audit event for forbidden access attempts
@@ -166,7 +167,13 @@ if (!response.ok) {
 ```typescript
 async (state) => {
   // Check authentication
-  state.okUser();
+  try {
+    state.okUser();
+  } catch (error) {
+    return state.sendBuffer(302, {
+      "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+    }, Buffer.from("Redirecting to login...", "utf-8"));
+  }
 
   // Check admin role
   if (!state.user.isAdmin) {
@@ -200,6 +207,8 @@ async (state) => {
   // ... proceed to serve template
 }
 ```
+
+**Note**: The `state.okUser()` throws a string error when not authenticated, so we wrap it in try-catch and return a 302 redirect to the login page instead of letting it become a 500 error.
 
 ---
 

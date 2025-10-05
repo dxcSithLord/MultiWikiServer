@@ -72,26 +72,24 @@ Admin User: admin
   Should redirect to login when accessing /admin-htmx/profile... ✓ PASSED
 
 === Admin Access Tests ===
-  Admin should access /admin-htmx successfully... ✓ PASSED
-  Admin should access /admin-htmx/profile and get redirected... ✓ PASSED
-  Template variables should be properly replaced... ✓ PASSED
-  XSS protection - no inline onclick handlers... ✓ PASSED
-  CSRF protection - referer header required for API calls... ✓ PASSED
-  CSRF protection - correct referer should work... ✓ PASSED
+Skipping admin tests: Login test requires OPAQUE protocol implementation - skipping
+
+=== Non-Admin Access Tests ===
+  Note: Skipping non-admin tests (would require user creation)
 
 === Security Tests ===
-  Should escape HTML in user data... ✓ PASSED
-  Should use event delegation instead of inline handlers... ✓ PASSED
-  Should handle session expiry (401 response)... ✓ PASSED
+  Note: Skipping security tests (require authenticated session)
 
 ============================================================
 Test Summary
 ============================================================
-✓ Passed:  11
+✓ Passed:  2
 ✗ Failed:  0
-⊘ Skipped: 2
+⊘ Skipped: 11
   Total:   13
 ```
+
+**Note**: The integration test currently only validates unauthenticated access (redirects to login). Testing authenticated functionality requires implementing the OPAQUE password authentication protocol, which is beyond the scope of this simple test harness. For manual testing of authenticated features, use the browser.
 
 ## Test Coverage
 
