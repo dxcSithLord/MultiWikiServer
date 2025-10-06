@@ -7,10 +7,153 @@ import { Http2ServerRequest, Http2ServerResponse } from "node:http2";
 import { ListenOptions } from "./listeners";
 import { serverEvents } from "@tiddlywiki/events";
 import { SendError } from "./SendError";
-
+import type { IncomingMessage, ServerResponse } from 'http';
+import { ResponseGuard } from './response-guard';
+import type { _Streamer } from './streamer';
 
 const debug = Debug("mws:router:matching");
 const debugnomatch = Debug("mws:router:nomatch");
+
+interface Route {
+    path: string;
+    method?: string;
+    handler: (req: IncomingMessage, res: ServerResponse, streamer: _Streamer, guard?: ResponseGuard) => Promise<void>;
+    catchHandler?: (error: Error, req: IncomingMessage, res: ServerResponse, streamer: _Streamer, guard?: ResponseGuard) => Promise<void>;
+}
+
+export class _Router {
+    private routes: Route[] = [];
+    
+    /**
+     * Add a route to the router
+     */
+    addRoute(route: Route): void {
+        this.routes.push(route);
+    }
+    
+    /**
+     * Handle incoming request
+     */
+    async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const streamer = new _Streamer(req, res);
+        
+        // Create ResponseGuard for this request
+        const guard = new ResponseGuard(res, streamer);
+        
+        try {
+            await this.handleStreamer(req, res, streamer, guard);
+        } catch (error) {
+            console.error('[Router] Unhandled error in request:', error);
+            
+            // Last resort error handling
+            if (!guard.isSent() && guard.isWritable()) {
+                await guard.sendError(500, 'Internal Server Error');
+            }
+        }
+    }
+    
+    /**
+     * Handle request with streamer
+     */
+    private async handleStreamer(
+        req: IncomingMessage, 
+        res: ServerResponse, 
+        streamer: _Streamer,
+        guard: ResponseGuard
+    ): Promise<void> {
+        const route = this.findRoute(req);
+        
+        if (!route) {
+            await guard.sendError(404, 'Not Found');
+            return;
+        }
+        
+        await this.handleRoute(route, req, res, streamer, guard);
+    }
+    
+    /**
+     * Handle a specific route
+     */
+    private async handleRoute(
+        route: Route,
+        req: IncomingMessage,
+        res: ServerResponse,
+        streamer: _Streamer,
+        guard: ResponseGuard
+    ): Promise<void> {
+        console.log(`[Router] Handling route: ${req.method} ${req.url}`);
+        console.log(`[Router] Initial guard state:`, guard.getDebugInfo());
+        
+        try {
+            // Call the route handler with the guard
+            await route.handler(req, res, streamer, guard);
+            
+            // Verify response was sent
+            if (!guard.isSent()) {
+                console.warn('[Router] Handler completed but no response sent');
+                await guard.sendError(500, 'Handler did not send response');
+            }
+            
+            console.log(`[Router] Route completed:`, guard.getDebugInfo());
+            
+        } catch (error) {
+            console.error('[Router] Error in route handler:', error);
+            console.error('[Router] Guard state at error:', guard.getDebugInfo());
+            
+            // Call custom error handler if provided
+            if (route.catchHandler) {
+                try {
+                    await route.catchHandler(error as Error, req, res, streamer, guard);
+                } catch (catchError) {
+                    console.error('[Router] Error in catch handler:', catchError);
+                    
+                    // Final fallback
+                    if (!guard.isSent() && guard.isWritable()) {
+                        await guard.sendError(500, 'Error handler failed');
+                    }
+                }
+            } else {
+                // Default error handling
+                if (!guard.isSent() && guard.isWritable()) {
+                    await guard.sendError(500, (error as Error).message);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find matching route for request
+     */
+    private findRoute(req: IncomingMessage): Route | null {
+        const method = req.method || 'GET';
+        const url = req.url || '/';
+        
+        for (const route of this.routes) {
+            if (route.method && route.method !== method) {
+                continue;
+            }
+            
+            if (this.matchPath(route.path, url)) {
+                return route;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Match URL path against route pattern
+     */
+    private matchPath(pattern: string, path: string): boolean {
+        // Simple pattern matching - replace with your implementation
+        const patternRegex = pattern
+            .replace(/:[^/]+/g, '([^/]+)')
+            .replace(/\*/g, '.*');
+        
+        const regex = new RegExp(`^${patternRegex}$`);
+        return regex.test(path);
+    }
+}
 
 export interface AllowedRequestedWithHeaderKeys {
   fetch: true;
