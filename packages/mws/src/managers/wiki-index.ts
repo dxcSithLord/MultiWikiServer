@@ -3,7 +3,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { _Streamer } from '@mws/server/src/streamer';
 import type { _Router } from '@mws/server/src/router';
-import { ResponseGuard } from '@mws/server/src/response-guard';
+import { ResponseGuard } from '../../../server/src/response-guard';
 
 interface WikiIndexRoute {
     path: string;
