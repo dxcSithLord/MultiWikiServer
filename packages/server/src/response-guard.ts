@@ -1,7 +1,7 @@
 // File: packages/server/src/response-guard.ts
 
 import type { ServerResponse } from 'http';
-import type { _Streamer } from './streamer';
+import type { Streamer } from './streamer';
 
 /**
  * ResponseGuard prevents double-sending responses and provides
@@ -10,22 +10,22 @@ import type { _Streamer } from './streamer';
 export class ResponseGuard {
     private _sent = false;
     private _streamEnded = false;
-    
+
     constructor(
         private response: ServerResponse,
-        private streamer: _Streamer
+        private streamer: Streamer
     ) {
         // Monitor response lifecycle
-        this.response.on('finish', () => {
+        this.response.once('finish', () => {
             this._sent = true;
             this._streamEnded = true;
         });
-        
-        this.response.on('close', () => {
+
+        this.response.once('close', () => {
             this._streamEnded = true;
         });
-        
-        this.response.on('error', (err) => {
+
+        this.response.once('error', (err) => {
             console.error('Response stream error:', err);
             this._streamEnded = true;
         });
@@ -65,12 +65,12 @@ export class ResponseGuard {
         }
         
         try {
-            this._sent = true;
             this.streamer.sendBuffer(buffer, contentType);
+            this._sent = true; // Set AFTER successful send
             return true;
         } catch (error) {
             console.error('[ResponseGuard] Error sending buffer:', error);
-            this._sent = false; // Reset if send failed
+            this._streamEnded = true; // Mark stream as ended on failure
             return false;
         }
     }
@@ -90,12 +90,12 @@ export class ResponseGuard {
         }
         
         try {
-            this._sent = true;
             await this.streamer.sendAdmin(content);
+            this._sent = true; // Set AFTER successful send
             return true;
         } catch (error) {
             console.error('[ResponseGuard] Error sending admin page:', error);
-            this._sent = false;
+            this._streamEnded = true; // Mark stream as ended on failure
             return false;
         }
     }
@@ -133,7 +133,7 @@ export class ResponseGuard {
                 <head><title>Error ${statusCode}</title></head>
                 <body>
                     <h1>Error ${statusCode}</h1>
-                    <p>${message}</p>
+                    <p>${this.escapeHtml(message)}</p>
                 </body>
                 </html>
             `);
@@ -157,5 +157,19 @@ export class ResponseGuard {
             writable: this.isWritable(),
             canSend: !this.isSent()
         };
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS
+     */
+    private escapeHtml(text: string): string {
+        const map: Record<string, string> = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, (m) => map[m]);
     }
 }
