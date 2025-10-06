@@ -108,6 +108,19 @@ serverEvents.on("mws.routes", (root, config) => {
       const error = new SendError("INTERNAL_SERVER_ERROR", 500, {
         message: "An unexpected error occurred. Details have been logged.",
       });
+          // wiki-index.ts line 111
+    catchHandler: async (error, req, res, streamer) => {
+        console.error('=== ERROR HANDLER DEBUG ===');
+        console.error('Error:', error);
+        console.error('Headers sent:', res.headersSent);
+        console.error('Writable ended:', res.writableEnded);
+        console.error('Destroyed:', res.destroyed);
+        console.error('=========================');
+        
+        if (res.headersSent || res.writableEnded || res.destroyed) {
+            console.error('Skipping error response - stream already committed');
+            return;
+        }
       await state.sendAdmin(error.status, { sendError: error });
     }
     throw STREAM_ENDED;
