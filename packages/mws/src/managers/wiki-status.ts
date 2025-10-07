@@ -64,23 +64,28 @@ export class WikiStatusRoutes {
 
       debugSSE("connection opened", recipe_name);
       const events = state.sendSSE();
-      serverEvents.on("mws.tiddler.events", onEvent);
-      events.onClose(() => {
+      let closed = false;
+      let timeout: any = null;
+      let lastSent = 0;
+
+      // Define cleanup FIRST, before any async operations
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
         debugSSE("connection closed", recipe_name);
         serverEvents.off("mws.tiddler.events", onEvent);
-      });
+        if (timeout) clearTimeout(timeout);
+      };
 
-      let timeout: any = null, lastSent = 0;
+      // Register cleanup BEFORE adding event listener (prevents race condition)
+      events.onClose(cleanup);
+      state.streamer.writer.once('error', cleanup);
 
-      scheduleEvent();
-
-      throw STREAM_ENDED;
-
-      // catch errors here otherwise they would cause the initiating request to 
-      // possibly return a 500 response. Since the event happens after the 
+      // catch errors here otherwise they would cause the initiating request to
+      // possibly return a 500 response. Since the event happens after the
       // transaction closes, it wouldn't roll it back.
 
-      // the only way to optimize this would be if the mws event included the 
+      // the only way to optimize this would be if the mws event included the
       // entire recipe_bags table, so we could check if the bag is in our recipe
 
       // it's worse because we're using recipe and bag names instead of ids
@@ -89,6 +94,8 @@ export class WikiStatusRoutes {
       // TODO: there are probably things we could improve.
 
       async function onEvent(data: ServerEventsMap["mws.tiddler.events"][0]) {
+        if (closed) return; // Guard against late events
+
         try {
           debugSSE("onEvent", data);
           const hasBag = !!await state.engine.recipe_bags.count({
@@ -97,37 +104,63 @@ export class WikiStatusRoutes {
               bag: { bag_name: data.bag_name },
             },
           });
-          if (hasBag) {
+
+          if (hasBag && !closed) { // Double-check not closed
             debugSSE("hasBag", data.bag_name);
             scheduleEvent();
           }
         } catch (e) {
-          console.error("Error in onSave for recipe events", e);
+          console.error(`Error in onEvent for recipe ${recipe_name}:`, e);
+          // Don't close connection on transient DB errors
         }
       }
 
       function scheduleEvent() {
+        if (closed) return; // Guard against late scheduling
+
         // if we haven't sent an event in 5 seconds, don't keep debouncing
-        if (timeout && lastSent < Date.now() - 5000)
+        if (timeout && lastSent < Date.now() - 5000) {
           return void debugSSE("don't debounce", recipe_name, lastSent);
+        }
+
         if (timeout) clearTimeout(timeout);
         timeout = setTimeout(sendEvent, 1000);
       }
 
       async function sendEvent() {
+        if (closed) return; // Guard
+
         timeout = null;
         lastSent = Date.now();
+
         try {
           debugSSE("sendEvent", recipe_name, lastEventID);
-          const { updates, newlastevent } = await sendTiddlerEvents(state.engine, recipe_name, lastEventID!, events);
-          debugSSE("sendEvent updates", updates.map(e => e.bag.tiddlers.map(e => e.title)), newlastevent);
-          if (lastEventID === newlastevent) return;
+          const { updates, newlastevent } = await sendTiddlerEvents(
+            state.engine,
+            recipe_name,
+            lastEventID!,
+            events
+          );
+
+          debugSSE("sendEvent updates",
+            updates.map(e => e.bag.tiddlers.map(e => e.title)),
+            newlastevent
+          );
+
+          if (lastEventID === newlastevent || closed) return;
+
           events.emitEvent("tiddler.since-last-event", updates, newlastevent);
           lastEventID = newlastevent;
         } catch (e) {
-          console.error("Error in sendTiddlerEvents", e);
+          console.error(`Error in sendTiddlerEvents for recipe ${recipe_name}:`, e);
         }
       }
+
+      // NOW safe to register event listener (cleanup already registered)
+      serverEvents.on("mws.tiddler.events", onEvent);
+      scheduleEvent();
+
+      throw STREAM_ENDED;
 
 
     }

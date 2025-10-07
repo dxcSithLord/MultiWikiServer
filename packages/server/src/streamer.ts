@@ -601,9 +601,54 @@ export class StreamerState {
    * input stream ends.
    */
 
-  async pipeFrom(stream: Readable) {
-    stream.pipe(this.streamer.writer, { end: false });
-    return new Promise<void>((r, c) => this.streamer.writer.on("unpipe", r).on("error", c));
+  async pipeFrom(stream: Readable): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let completed = false;
+
+      const cleanup = () => {
+        stream.removeListener('error', onError);
+        stream.removeListener('end', onEnd);
+        this.streamer.writer.removeListener('error', onWriterError);
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+
+      const onError = (err: Error) => {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        stream.unpipe(this.streamer.writer);
+        stream.destroy();
+        reject(err);
+      };
+
+      const onEnd = () => {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        resolve();
+      };
+
+      const onWriterError = (err: Error) => {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        stream.destroy();
+        reject(err);
+      };
+
+      // 5 second timeout protection
+      const timeoutId = setTimeout(() => {
+        if (!completed) {
+          onError(new Error('Stream pipe timeout after 5 seconds'));
+        }
+      }, 5000);
+
+      stream.on('error', onError);
+      stream.on('end', onEnd);
+      this.streamer.writer.on('error', onWriterError);
+
+      stream.pipe(this.streamer.writer, { end: false });
+    });
   }
 
   /** sends a status and plain text string body */

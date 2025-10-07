@@ -181,12 +181,38 @@ $tw.preloadTiddler = function(fields) {
       await state.write(`<script>$tw.preloadTiddlers.push(`);
 
       if (!enableExternalPlugins) {
-        const fileStreams = plugins.map(e => createReadStream(join(cachePath, pluginFiles.get(e)!, "plugin.json")));
+        for (let i = 0; i < plugins.length; i++) {
+          const pluginName = plugins[i]!;
+          const pluginFile = pluginFiles.get(pluginName);
 
-        for (let i = 0; i < fileStreams.length; i++) {
-          await state.write("\n");
-          await state.pipeFrom(fileStreams[i]!);
-          await state.write(",");
+          if (!pluginFile) {
+            throw new SendError("PLUGIN_NOT_FOUND", 500, {
+              plugin: pluginName,
+              recipe: recipe_name
+            });
+          }
+
+          const filePath = join(cachePath, pluginFile, "plugin.json");
+
+          try {
+            await state.write("\n");
+            const stream = createReadStream(filePath);
+
+            // Handle stream errors
+            stream.on('error', (err) => {
+              throw new SendError("PLUGIN_READ_ERROR", 500, {
+                plugin: pluginName,
+                path: filePath,
+                error: err.message
+              });
+            });
+
+            await state.pipeFrom(stream);
+            await state.write(",");
+          } catch (error) {
+            console.error(`Failed to stream plugin ${pluginName} from ${filePath}:`, error);
+            throw error;
+          }
         }
       }
 
@@ -220,15 +246,39 @@ $tw.preloadTiddler = function(fields) {
       await state.write(marker);
 
       if (!enableExternalPlugins) {
+        for (let i = 0; i < plugins.length; i++) {
+          const pluginName = plugins[i]!;
+          const pluginFile = pluginFiles.get(pluginName);
 
-        const fileStreams = plugins.map(e => createReadStream(join(cachePath, pluginFiles.get(e)!, "plugin.json")));
+          if (!pluginFile) {
+            throw new SendError("PLUGIN_NOT_FOUND", 500, {
+              plugin: pluginName,
+              recipe: recipe_name
+            });
+          }
 
-        for (let i = 0; i < fileStreams.length; i++) {
-          await state.write("\n");
-          await state.pipeFrom(fileStreams[i]!);
-          await state.write(",");
+          const filePath = join(cachePath, pluginFile, "plugin.json");
+
+          try {
+            await state.write("\n");
+            const stream = createReadStream(filePath);
+
+            // Handle stream errors
+            stream.on('error', (err) => {
+              throw new SendError("PLUGIN_READ_ERROR", 500, {
+                plugin: pluginName,
+                path: filePath,
+                error: err.message
+              });
+            });
+
+            await state.pipeFrom(stream);
+            await state.write(",");
+          } catch (error) {
+            console.error(`Failed to stream plugin ${pluginName} from ${filePath}:`, error);
+            throw error;
+          }
         }
-
       }
 
       await this.writeStoreTiddlers(state, recipe, recipe_name);
