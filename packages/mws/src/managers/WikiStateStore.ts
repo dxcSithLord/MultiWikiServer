@@ -137,20 +137,22 @@ export class WikiStateStore extends TiddlerStore_PrismaTransaction {
     const contentDigest = hash.digest("hex");
 
     const newEtag = `"${contentDigest}"`;
-    const match = false && state.headers["if-none-match"] === newEtag;
+    const match = state.config.enableETagCaching && state.headers["if-none-match"] === newEtag;
 
     const headers: Record<string, string> = {};
     headers["content-type"] = "text/html";
     headers["etag"] = newEtag;
     headers["cache-control"] = "max-age=0, private, no-cache";
 
-    // headers['content-security-policy'] = [
-    //   // This header should prevent any external data from being pulled into the page 
-    //   // via fetch XHR, src tags, CSS includes, etc. 
-    //   "default-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:",
-    //   // this blocks any kind of form submissions from happening. 
-    //   "form-action 'none'",
-    // ].join("; ");
+    if (state.config.enableCSP) {
+      headers['content-security-policy'] = [
+        // Allows TiddlyWiki to function while blocking external resources
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:",
+        // Prevent form submissions to external sites
+        "form-action 'none'",
+      ].join("; ");
+    }
+
     state.writeHead(match ? 304 : 200, headers);
 
     if (state.method === "HEAD" || match) return state.end();

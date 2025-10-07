@@ -11,6 +11,37 @@ import { serverEvents } from "@tiddlywiki/events";
 const prefix = Buffer.from(`$tw.preloadTiddler(`, "utf8");
 const suffix = Buffer.from(`);`, "utf8");
 
+const REQUIRED_MARKERS = {
+  HEAD_CLOSE: '</head>',
+  TIDDLER_STORE: '<script class="tiddlywiki-tiddler-store" type="application/json">[',
+} as const;
+
+function validateWikiTemplate(templatePath: string, template: string): void {
+  const missing: string[] = [];
+
+  for (const [name, marker] of Object.entries(REQUIRED_MARKERS)) {
+    if (!template.includes(marker)) {
+      missing.push(`'${marker}' (${name})`);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Invalid wiki template at ${templatePath}:\n` +
+      `  Missing required markers: ${missing.join(', ')}\n` +
+      `  Template may be corrupted or is not a valid TiddlyWiki HTML file.`
+    );
+  }
+
+  // Warn about suspicious patterns
+  if (template.length < 10000) {
+    console.warn(
+      `Wiki template at ${templatePath} is suspiciously small (${template.length} bytes). ` +
+      `Expected ~100KB+. Template may be incomplete.`
+    );
+  }
+}
+
 export async function startupCache($tw: TW, cachePath: string) {
 
   const pkg = JSON.parse(fs.readFileSync(dist_resolve("../package.json"), "utf8"));
@@ -38,7 +69,12 @@ export async function startupCache($tw: TW, cachePath: string) {
 
   const filepath = path.resolve(cachePath, "tiddlywiki5.html")
 
+  // Validate template before writing
+  validateWikiTemplate(filepath, result);
+
   fs.writeFileSync(filepath, result);
+
+  console.log(`✓ Wiki template validated and cached: ${filepath}`);
 
   return {
     pluginFiles, pluginHashes, filePlugins,
