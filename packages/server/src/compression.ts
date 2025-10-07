@@ -131,9 +131,12 @@ export class Compressor {
     debug('using %s compression', this.method)
     this.stream = this.createStream(this.method);
 
-    // Increase max listeners for compression streams to handle high-frequency writes
-    // When serving many tiddlers, multiple write operations may wait for 'drain' events
-    this.stream.setMaxListeners(100);
+    // Compression streams can accumulate listeners during backpressure scenarios:
+    // - Buffered writes waiting for drain: ~5-10
+    // - Concurrent pipeFrom operations: ~2-5
+    // - Edge cases (splitStream, etc): ~3-5
+    // Total: ~20 should handle all legitimate scenarios
+    this.stream.setMaxListeners(20);
 
     if (this.method && this.method !== "gzip-stream") {
       res.setHeader('Content-Encoding', this.method)
@@ -155,7 +158,8 @@ export class Compressor {
       this.stream!.end();
     });
     this.stream = this.createStream(this.method);
-    this.stream.setMaxListeners(100);
+    // Same listener limit as in beforeWriteHead - see comment there for details
+    this.stream.setMaxListeners(20);
     await new Promise(resolve => {
       this.res.on("pipe", resolve);
       this.res.on("unpipe", this.finisher);

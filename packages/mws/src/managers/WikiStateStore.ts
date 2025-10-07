@@ -7,6 +7,37 @@ import { ServerRequest } from "@tiddlywiki/server";
 import { readFile } from "fs/promises";
 import { SendError } from "@tiddlywiki/server";
 
+/**
+ * Buffers small writes to reduce backpressure events.
+ * Auto-flushes at 64KB to balance memory usage and performance.
+ */
+class BufferedWriter {
+  private buffer: string[] = [];
+  private bufferSize = 0;
+  private readonly maxBufferSize = 64 * 1024; // 64KB
+
+  constructor(private state: ServerRequest) {}
+
+  async write(chunk: string): Promise<void> {
+    this.buffer.push(chunk);
+    this.bufferSize += Buffer.byteLength(chunk, 'utf8');
+
+    if (this.bufferSize >= this.maxBufferSize) {
+      await this.flush();
+    }
+  }
+
+  async flush(): Promise<void> {
+    if (this.buffer.length === 0) return;
+
+    const content = this.buffer.join('');
+    await this.state.write(content);
+
+    this.buffer = [];
+    this.bufferSize = 0;
+  }
+}
+
 /** Basically a bunch of methods to help with wiki routes. */
 export class WikiStateStore extends TiddlerStore_PrismaTransaction {
   constructor(
@@ -301,13 +332,19 @@ $tw.preloadTiddler = function(fields) {
 
 
   private async writeStoreTiddlers(state: ServerRequest<"string" | "stream" | "json" | "buffer" | "www-form-urlencoded" | "www-form-urlencoded-urlsearchparams" | "ignore", string, unknown>, recipe: { recipe_bags: { position: number & { __prisma_table: "Recipe_bags"; __prisma_field: "position"; }; bag: { bag_id: string & { __prisma_table: "Bags"; __prisma_field: "bag_id"; }; bag_name: string & { __prisma_table: "Bags"; __prisma_field: "bag_name"; }; }; }[]; } & { recipe_id: string & { __prisma_table: "Recipes"; __prisma_field: "recipe_id"; }; recipe_name: string & { __prisma_table: "Recipes"; __prisma_field: "recipe_name"; }; description: string & { __prisma_table: "Recipes"; __prisma_field: "description"; }; owner_id: PrismaField<"Recipes", "owner_id">; plugin_names: PrismaJson.Recipes_plugin_names & { __prisma_table: "Recipes"; __prisma_field: "plugin_names"; }; skip_required_plugins: PrismaField<"Recipes", "skip_required_plugins">; skip_core: PrismaField<"Recipes", "skip_core">; preload_store: PrismaField<"Recipes", "preload_store">; custom_wiki: PrismaField<"Recipes", "custom_wiki">; }, recipe_name: string & { __prisma_table: "Recipes"; __prisma_field: "recipe_name"; }) {
+    const bufferedWriter = new BufferedWriter(state);
+
     async function writeTiddler(tiddlerFields: Record<string, string>) {
-      await state.write(JSON.stringify(tiddlerFields).replace(/</g, "\\u003c") + ",\n");
+      const json = JSON.stringify(tiddlerFields).replace(/</g, "\\u003c");
+      await bufferedWriter.write(json + ",\n");
     }
 
     const bagOrder = new Map(recipe.recipe_bags.map(e => [e.bag.bag_id, e.position]));
     const bagIDs = recipe.recipe_bags.filter(e => !state.pluginCache.pluginFiles.has(e.bag.bag_name)).map(e => e.bag.bag_id);
     await this.serveStoreTiddlers(bagIDs, bagOrder, recipe_name, state.pathPrefix, state.config.enableDevServer, writeTiddler);
+
+    // Flush any remaining buffered content
+    await bufferedWriter.flush();
   }
 
   private async serveStoreTiddlers(
@@ -318,7 +355,21 @@ $tw.preloadTiddler = function(fields) {
     enableDevServer: boolean,
     writeTiddler: (tiddlerFields: Record<string, string>) => Promise<void>
   ) {
-    // NOTES: 
+    // Validate inputs early - fail fast
+    if (bagKeys.length === 0) {
+      console.warn(`Recipe ${recipe_name} has no non-plugin bags to serve`);
+      return;
+    }
+
+    // Validate all bag keys exist in order map BEFORE querying database
+    const missingBags = bagKeys.filter(id => !bagOrder.has(id));
+    if (missingBags.length > 0) {
+      throw new Error(
+        `Bags missing from bag order map in recipe ${recipe_name}: ${missingBags.join(', ')}`
+      );
+    }
+
+    // NOTES:
     // there is no point in using Prisma's distinct option, as it happens in memory.
     // we also cannot use orderBy across a oneToMany relationship
 
@@ -344,13 +395,31 @@ $tw.preloadTiddler = function(fields) {
       }
     });
 
-    if (!bagTiddlers.every(e => bagOrder.has(e.bag_id))) {
-      console.log(bagTiddlers.map(e => e.bag_id));
-      console.log(bagOrder);
-      throw new Error("Bags missing from bag order");
+    // Validate query results match expectations
+    if (bagTiddlers.length !== bagKeys.length) {
+      const foundIds = new Set(bagTiddlers.map(b => b.bag_id));
+      const notFound = bagKeys.filter(id => !foundIds.has(id));
+      throw new Error(
+        `Database missing bags that should exist in recipe ${recipe_name}: ${notFound.join(', ')}`
+      );
     }
 
-    bagTiddlers.sort((a, b) => bagOrder.get(b.bag_id)! - bagOrder.get(a.bag_id)!);
+    // Safe map access with error handling
+    bagTiddlers.sort((a, b) => {
+      const orderA = bagOrder.get(a.bag_id);
+      const orderB = bagOrder.get(b.bag_id);
+
+      if (orderA === undefined || orderB === undefined) {
+        throw new Error(
+          `Bag order missing for bags: ${[
+            orderA === undefined ? a.bag_id : null,
+            orderB === undefined ? b.bag_id : null
+          ].filter(Boolean).join(', ')}`
+        );
+      }
+
+      return orderB - orderA;
+    });
     // this determines which bag takes precedence
     // Map overwrites earlier entries with later entries,
     // so the topmost bag comes last, i.e. the position numbers are in descending order.
