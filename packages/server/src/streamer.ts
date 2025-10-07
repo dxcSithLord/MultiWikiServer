@@ -104,12 +104,6 @@ export class Streamer {
         emitClose: true,
       }
     });
-
-    // Increase max listeners for compression streams to handle high-frequency writes
-    // When serving many tiddlers, multiple write operations may wait for 'drain' events
-    if (this.compressor.stream) {
-      this.compressor.stream.setMaxListeners(50);
-    }
   }
 
 

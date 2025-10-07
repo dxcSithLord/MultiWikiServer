@@ -101,6 +101,11 @@ serverEvents.on("mws.routes", (root, config) => {
 
     throw STREAM_ENDED;
   }, async (state, e) => {
+    // STREAM_ENDED is a success signal, not an error - pass it through immediately
+    if (e === STREAM_ENDED) {
+      throw STREAM_ENDED;
+    }
+
     // Check if response can still be sent before attempting (fixes "headers already sent" error)
     if (state.streamer.res.headersSent || state.streamer.res.writableEnded || state.streamer.res.destroyed) {
       console.warn('[WikiIndex] Cannot send error response - stream already ended');
