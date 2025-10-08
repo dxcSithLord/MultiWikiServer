@@ -8,7 +8,6 @@ import { ListenOptions } from "./listeners";
 import { serverEvents } from "@tiddlywiki/events";
 import { SendError } from "./SendError";
 
-
 const debug = Debug("mws:router:matching");
 const debugnomatch = Debug("mws:router:nomatch");
 

@@ -11,10 +11,11 @@
     <table class="mws-admin-table" id="recipes-table" style="display: none;">
       <thead>
         <tr>
+          <th style="width: 48px;"></th>
           <th>Name</th>
           <th>Description</th>
           <th>Owner</th>
-          <th>Bags</th>
+          <th style="width: 120px;">Status</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -138,16 +139,55 @@
 
     recipesData.forEach(recipe => {
       const row = document.createElement('tr');
-      const bags = recipe.recipe_bags?.map(rb => {
-        const name = getBagName(rb.bag_id);
-        return rb.with_acl ? `+${name}` : name;
-      }).join(', ') || '';
+
+      // Check if all bags are readable
+      const bagsReadable = recipe.recipe_bags?.every(rb => {
+        return indexData?.bagList?.some(b => b.bag_id === rb.bag_id);
+      }) ?? true;
+
+      // Build status icons
+      const statusIcons = [];
+      if (recipe.custom_wiki) {
+        statusIcons.push('<span title="Custom Wiki" style="color: #d32f2f;">📄</span>');
+      }
+      if (recipe.skip_core) {
+        statusIcons.push('<span title="Core Disabled" style="color: #d32f2f;">⚙️</span>');
+      }
+      if (recipe.skip_required_plugins) {
+        statusIcons.push('<span title="Required Plugins Disabled" style="color: #f57c00;">🧩</span>');
+      }
+      if (recipe.preload_store) {
+        statusIcons.push('<span title="Preload Store Enabled" style="color: #1976d2;">⚡</span>');
+      }
+      if (!bagsReadable) {
+        statusIcons.push('<span title="Some bags not readable" style="color: #f57c00;">⚠️</span>');
+      }
+
+      // Favicon URL
+      const faviconUrl = pathPrefix + '/recipe/' + encodeURIComponent(recipe.recipe_name) + '/tiddlers/%24%3A%2Ffavicon.ico';
+
+      // Wiki link URL
+      const wikiUrl = pathPrefix + '/wiki/' + encodeURIComponent(recipe.recipe_name);
 
       row.innerHTML = `
-        <td><strong>${escapeHtml(recipe.recipe_name)}</strong></td>
+        <td style="text-align: center;">
+          <img src="${faviconUrl}"
+               alt=""
+               style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+          <span style="display: none; font-size: 24px;">📝</span>
+        </td>
+        <td>
+          <a href="${wikiUrl}" target="_blank" style="font-weight: bold; color: #1976d2; text-decoration: none;">
+            ${escapeHtml(recipe.recipe_name)}
+          </a>
+          ${recipe.owner_id ? '<br><small class="mws-text-muted">by ' + escapeHtml(getOwnerName(recipe.owner_id)) + '</small>' : ''}
+        </td>
         <td>${escapeHtml(recipe.description || '')}</td>
         <td>${escapeHtml(getOwnerName(recipe.owner_id))}</td>
-        <td><span class="mws-text-muted">${escapeHtml(bags)}</span></td>
+        <td style="text-align: center; font-size: 20px;">
+          ${statusIcons.join(' ')}
+        </td>
         <td>
           <div class="mws-btn-group">
             <button class="mws-btn mws-btn-sm mws-btn-secondary" data-action="edit" data-id="${escapeHtml(recipe.recipe_name)}">Edit</button>

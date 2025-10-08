@@ -7,6 +7,37 @@ import { ServerRequest } from "@tiddlywiki/server";
 import { readFile } from "fs/promises";
 import { SendError } from "@tiddlywiki/server";
 
+/**
+ * Buffers small writes to reduce backpressure events.
+ * Auto-flushes at 64KB to balance memory usage and performance.
+ */
+class BufferedWriter {
+  private buffer: string[] = [];
+  private bufferSize = 0;
+  private readonly maxBufferSize = 64 * 1024; // 64KB
+
+  constructor(private state: ServerRequest) {}
+
+  async write(chunk: string): Promise<void> {
+    this.buffer.push(chunk);
+    this.bufferSize += Buffer.byteLength(chunk, 'utf8');
+
+    if (this.bufferSize >= this.maxBufferSize) {
+      await this.flush();
+    }
+  }
+
+  async flush(): Promise<void> {
+    if (this.buffer.length === 0) return;
+
+    const content = this.buffer.join('');
+    await this.state.write(content);
+
+    this.buffer = [];
+    this.bufferSize = 0;
+  }
+}
+
 /** Basically a bunch of methods to help with wiki routes. */
 export class WikiStateStore extends TiddlerStore_PrismaTransaction {
   constructor(
@@ -106,20 +137,22 @@ export class WikiStateStore extends TiddlerStore_PrismaTransaction {
     const contentDigest = hash.digest("hex");
 
     const newEtag = `"${contentDigest}"`;
-    const match = false && state.headers["if-none-match"] === newEtag;
+    const match = state.config.enableETagCaching && state.headers["if-none-match"] === newEtag;
 
     const headers: Record<string, string> = {};
     headers["content-type"] = "text/html";
     headers["etag"] = newEtag;
     headers["cache-control"] = "max-age=0, private, no-cache";
 
-    // headers['content-security-policy'] = [
-    //   // This header should prevent any external data from being pulled into the page 
-    //   // via fetch XHR, src tags, CSS includes, etc. 
-    //   "default-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:",
-    //   // this blocks any kind of form submissions from happening. 
-    //   "form-action 'none'",
-    // ].join("; ");
+    if (state.config.enableCSP) {
+      headers['content-security-policy'] = [
+        // Allows TiddlyWiki to function while blocking external resources
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:",
+        // Prevent form submissions to external sites
+        "form-action 'none'",
+      ].join("; ");
+    }
+
     state.writeHead(match ? 304 : 200, headers);
 
     if (state.method === "HEAD" || match) return state.end();
@@ -178,21 +211,47 @@ $tw.preloadTiddler = function(fields) {
 
       }
 
-      state.write(`<script>$tw.preloadTiddlers.push(`);
+      await state.write(`<script>$tw.preloadTiddlers.push(`);
 
       if (!enableExternalPlugins) {
-        const fileStreams = plugins.map(e => createReadStream(join(cachePath, pluginFiles.get(e)!, "plugin.json")));
+        for (let i = 0; i < plugins.length; i++) {
+          const pluginName = plugins[i]!;
+          const pluginFile = pluginFiles.get(pluginName);
 
-        for (let i = 0; i < fileStreams.length; i++) {
-          state.write("\n");
-          await state.pipeFrom(fileStreams[i]!);
-          state.write(",");
+          if (!pluginFile) {
+            throw new SendError("PLUGIN_NOT_FOUND", 500, {
+              plugin: pluginName,
+              recipe: recipe_name
+            });
+          }
+
+          const filePath = join(cachePath, pluginFile, "plugin.json");
+
+          try {
+            await state.write("\n");
+            const stream = createReadStream(filePath);
+
+            // Handle stream errors
+            stream.on('error', (err) => {
+              throw new SendError("PLUGIN_READ_ERROR", 500, {
+                plugin: pluginName,
+                path: filePath,
+                error: err.message
+              });
+            });
+
+            await state.pipeFrom(stream);
+            await state.write(",");
+          } catch (error) {
+            console.error(`Failed to stream plugin ${pluginName} from ${filePath}:`, error);
+            throw error;
+          }
         }
       }
 
       await this.writeStoreTiddlers(state, recipe, recipe_name);
 
-      state.write(");</script>\n");
+      await state.write(");</script>\n");
 
       await state.write(template.substring(headPos));
 
@@ -220,15 +279,39 @@ $tw.preloadTiddler = function(fields) {
       await state.write(marker);
 
       if (!enableExternalPlugins) {
+        for (let i = 0; i < plugins.length; i++) {
+          const pluginName = plugins[i]!;
+          const pluginFile = pluginFiles.get(pluginName);
 
-        const fileStreams = plugins.map(e => createReadStream(join(cachePath, pluginFiles.get(e)!, "plugin.json")));
+          if (!pluginFile) {
+            throw new SendError("PLUGIN_NOT_FOUND", 500, {
+              plugin: pluginName,
+              recipe: recipe_name
+            });
+          }
 
-        for (let i = 0; i < fileStreams.length; i++) {
-          state.write("\n");
-          await state.pipeFrom(fileStreams[i]!);
-          state.write(",");
+          const filePath = join(cachePath, pluginFile, "plugin.json");
+
+          try {
+            await state.write("\n");
+            const stream = createReadStream(filePath);
+
+            // Handle stream errors
+            stream.on('error', (err) => {
+              throw new SendError("PLUGIN_READ_ERROR", 500, {
+                plugin: pluginName,
+                path: filePath,
+                error: err.message
+              });
+            });
+
+            await state.pipeFrom(stream);
+            await state.write(",");
+          } catch (error) {
+            console.error(`Failed to stream plugin ${pluginName} from ${filePath}:`, error);
+            throw error;
+          }
         }
-
       }
 
       await this.writeStoreTiddlers(state, recipe, recipe_name);
@@ -251,13 +334,19 @@ $tw.preloadTiddler = function(fields) {
 
 
   private async writeStoreTiddlers(state: ServerRequest<"string" | "stream" | "json" | "buffer" | "www-form-urlencoded" | "www-form-urlencoded-urlsearchparams" | "ignore", string, unknown>, recipe: { recipe_bags: { position: number & { __prisma_table: "Recipe_bags"; __prisma_field: "position"; }; bag: { bag_id: string & { __prisma_table: "Bags"; __prisma_field: "bag_id"; }; bag_name: string & { __prisma_table: "Bags"; __prisma_field: "bag_name"; }; }; }[]; } & { recipe_id: string & { __prisma_table: "Recipes"; __prisma_field: "recipe_id"; }; recipe_name: string & { __prisma_table: "Recipes"; __prisma_field: "recipe_name"; }; description: string & { __prisma_table: "Recipes"; __prisma_field: "description"; }; owner_id: PrismaField<"Recipes", "owner_id">; plugin_names: PrismaJson.Recipes_plugin_names & { __prisma_table: "Recipes"; __prisma_field: "plugin_names"; }; skip_required_plugins: PrismaField<"Recipes", "skip_required_plugins">; skip_core: PrismaField<"Recipes", "skip_core">; preload_store: PrismaField<"Recipes", "preload_store">; custom_wiki: PrismaField<"Recipes", "custom_wiki">; }, recipe_name: string & { __prisma_table: "Recipes"; __prisma_field: "recipe_name"; }) {
+    const bufferedWriter = new BufferedWriter(state);
+
     async function writeTiddler(tiddlerFields: Record<string, string>) {
-      await state.write(JSON.stringify(tiddlerFields).replace(/</g, "\\u003c") + ",\n");
+      const json = JSON.stringify(tiddlerFields).replace(/</g, "\\u003c");
+      await bufferedWriter.write(json + ",\n");
     }
 
     const bagOrder = new Map(recipe.recipe_bags.map(e => [e.bag.bag_id, e.position]));
     const bagIDs = recipe.recipe_bags.filter(e => !state.pluginCache.pluginFiles.has(e.bag.bag_name)).map(e => e.bag.bag_id);
     await this.serveStoreTiddlers(bagIDs, bagOrder, recipe_name, state.pathPrefix, state.config.enableDevServer, writeTiddler);
+
+    // Flush any remaining buffered content
+    await bufferedWriter.flush();
   }
 
   private async serveStoreTiddlers(
@@ -268,7 +357,21 @@ $tw.preloadTiddler = function(fields) {
     enableDevServer: boolean,
     writeTiddler: (tiddlerFields: Record<string, string>) => Promise<void>
   ) {
-    // NOTES: 
+    // Validate inputs early - fail fast
+    if (bagKeys.length === 0) {
+      console.warn(`Recipe ${recipe_name} has no non-plugin bags to serve`);
+      return;
+    }
+
+    // Validate all bag keys exist in order map BEFORE querying database
+    const missingBags = bagKeys.filter(id => !bagOrder.has(id));
+    if (missingBags.length > 0) {
+      throw new Error(
+        `Bags missing from bag order map in recipe ${recipe_name}: ${missingBags.join(', ')}`
+      );
+    }
+
+    // NOTES:
     // there is no point in using Prisma's distinct option, as it happens in memory.
     // we also cannot use orderBy across a oneToMany relationship
 
@@ -294,13 +397,31 @@ $tw.preloadTiddler = function(fields) {
       }
     });
 
-    if (!bagTiddlers.every(e => bagOrder.has(e.bag_id))) {
-      console.log(bagTiddlers.map(e => e.bag_id));
-      console.log(bagOrder);
-      throw new Error("Bags missing from bag order");
+    // Validate query results match expectations
+    if (bagTiddlers.length !== bagKeys.length) {
+      const foundIds = new Set(bagTiddlers.map(b => b.bag_id));
+      const notFound = bagKeys.filter(id => !foundIds.has(id));
+      throw new Error(
+        `Database missing bags that should exist in recipe ${recipe_name}: ${notFound.join(', ')}`
+      );
     }
 
-    bagTiddlers.sort((a, b) => bagOrder.get(b.bag_id)! - bagOrder.get(a.bag_id)!);
+    // Safe map access with error handling
+    bagTiddlers.sort((a, b) => {
+      const orderA = bagOrder.get(a.bag_id);
+      const orderB = bagOrder.get(b.bag_id);
+
+      if (orderA === undefined || orderB === undefined) {
+        throw new Error(
+          `Bag order missing for bags: ${[
+            orderA === undefined ? a.bag_id : null,
+            orderB === undefined ? b.bag_id : null
+          ].filter(Boolean).join(', ')}`
+        );
+      }
+
+      return orderB - orderA;
+    });
     // this determines which bag takes precedence
     // Map overwrites earlier entries with later entries,
     // so the topmost bag comes last, i.e. the position numbers are in descending order.
@@ -326,40 +447,40 @@ $tw.preloadTiddler = function(fields) {
 
       bagInfo[title] = bag_name;
       revisionInfo[title] = revision_id.toString();
-      writeTiddler(tiddler);
+      await writeTiddler(tiddler);
     }
 
     const last_revision_id = Object.values(revisionInfo).reduce((n, e) => n > e ? n : e, "");
 
-    writeTiddler({
+    await writeTiddler({
       title: "$:/state/multiwikiclient/tiddlers/bag",
       text: JSON.stringify(bagInfo),
       type: "application/json"
     });
-    writeTiddler({
+    await writeTiddler({
       title: "$:/state/multiwikiclient/tiddlers/revision",
       text: JSON.stringify(revisionInfo),
       type: "application/json"
     });
-    writeTiddler({
+    await writeTiddler({
       title: "$:/state/multiwikiclient/recipe/last_revision_id",
       text: last_revision_id
     });
 
-    writeTiddler({
+    await writeTiddler({
       title: "$:/config/multiwikiclient/recipe",
       text: recipe_name
     });
 
 
 
-    writeTiddler({
+    await writeTiddler({
       title: "$:/config/multiwikiclient/host",
       text: "$protocol$//$host$" + pathPrefix + "/",
     });
 
     if (enableDevServer)
-      writeTiddler({
+      await writeTiddler({
         title: "$:/state/multiwikiclient/dev-mode",
         text: "yes"
       });
