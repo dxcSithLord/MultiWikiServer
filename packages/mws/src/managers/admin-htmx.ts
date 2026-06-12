@@ -1,6 +1,6 @@
 import { readFile } from "fs/promises";
 import { resolve } from "path";
-import { ServerRoute, dist_resolve, ServerRequest } from "@tiddlywiki/server";
+import { ServerRoute, dist_resolve, dist_require_resolve, ServerRequest } from "@tiddlywiki/server";
 import { serverEvents } from "@tiddlywiki/events";
 import { createHash } from "crypto";
 
@@ -33,6 +33,7 @@ interface FrameTemplateVars {
 
 export class HtmxAdminManager {
   private static cssCache: { content: string; etag: string } | null = null;
+  private static opaqueJsCache: { content: string; etag: string } | null = null;
 
   /**
    * Get CSS content with ETag for caching
@@ -51,6 +52,48 @@ export class HtmxAdminManager {
     }
 
     return this.cssCache;
+  }
+
+  /**
+   * Get the self-hosted OPAQUE client ESM bundle (WASM inlined, no external imports)
+   * with an ETag for caching. Served locally so the login page never depends on a CDN
+   * and works offline. Cached in memory after the first read.
+   */
+  private static async getOpaqueJs(): Promise<{ content: string; etag: string }> {
+    if (!this.opaqueJsCache) {
+      const opaquePath = dist_require_resolve("@serenity-kit/opaque/esm/index.js");
+      const content = await readFile(opaquePath, "utf-8");
+      const etag = createHash('md5').update(content).digest('hex').slice(0, 8);
+      this.opaqueJsCache = { content, etag };
+    }
+    return this.opaqueJsCache;
+  }
+
+  /**
+   * Validate a post-login redirect target to prevent open redirects (OWASP).
+   * Only same-origin, single-slash absolute paths are allowed; anything else
+   * (absolute URLs, protocol-relative "//host", backslash tricks) falls back to
+   * the HTMX admin home.
+   */
+  private static safeRedirect(raw: string | undefined, pathPrefix: string): string {
+    const fallback = `${pathPrefix}/admin-htmx`;
+    if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+      return fallback;
+    }
+    return raw;
+  }
+
+  /**
+   * Render the HTMX login page. The pathPrefix and validated redirect are injected
+   * only as HTML-attribute-escaped data-* values; the page script reads them as
+   * plain strings, so no untrusted value is templated into executable JavaScript.
+   */
+  private static async renderLogin(pathPrefix: string, redirect: string): Promise<string> {
+    const templatePath = resolve(templatesDir, "htmx-login.html");
+    let html = await readFile(templatePath, "utf-8");
+    html = html.replace(/\{\{pathPrefix\}\}/g, escapeHtml(pathPrefix));
+    html = html.replace(/\{\{redirect\}\}/g, escapeHtml(redirect));
+    return html;
   }
 
   /**
@@ -130,6 +173,56 @@ export class HtmxAdminManager {
           "cache-control": "public, max-age=3600",
           "etag": etag,
         }, Buffer.from(content, "utf-8"));
+      }
+    );
+
+    // Self-hosted OPAQUE client bundle for the login page (ETag-cached).
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/opaque\.js$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        const { content, etag } = await HtmxAdminManager.getOpaqueJs();
+
+        const clientEtag = state.headers['if-none-match'];
+        if (clientEtag === etag) {
+          return state.sendEmpty(304, {
+            'etag': etag,
+            'cache-control': 'public, max-age=3600',
+          });
+        }
+
+        return state.sendBuffer(200, {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "public, max-age=3600",
+          "etag": etag,
+        }, Buffer.from(content, "utf-8"));
+      }
+    );
+
+    // HTMX login page. Shadows the React "/login" (registered on mws.routes, so it
+    // wins first-match over the React fallback). Unauthenticated admin redirects
+    // already point here. If already signed in, skip straight to the target.
+    root.defineRoute(
+      {
+        path: /^\/login$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        const redirect = HtmxAdminManager.safeRedirect(
+          state.queryParams["redirect"]?.[0], state.pathPrefix);
+
+        if (state.user.isLoggedIn) {
+          return state.sendBuffer(302, {
+            "location": redirect,
+          }, Buffer.from("Already signed in...", "utf-8"));
+        }
+
+        const html = await HtmxAdminManager.renderLogin(state.pathPrefix, redirect);
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
       }
     );
 

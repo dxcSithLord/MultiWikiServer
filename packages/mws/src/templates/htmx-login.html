@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in - MWS Admin</title>
+  <link rel="stylesheet" href="{{pathPrefix}}/admin-htmx/styles.css">
+  <style>
+    .mws-login-wrap { max-width: 360px; margin: 8vh auto; padding: 0 1rem; }
+    .mws-login-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 2rem; }
+    .mws-login-card h1 { margin: 0 0 1.5rem; font-size: 1.4rem; text-align: center; }
+    .mws-login-card label { display: block; margin: 0 0 .35rem; font-weight: 600; }
+    .mws-login-card input { width: 100%; box-sizing: border-box; padding: .6rem; margin-bottom: 1rem;
+      border: 1px solid #bdbdbd; border-radius: 4px; font-size: 1rem; }
+    .mws-login-card button { width: 100%; }
+    .mws-login-error { color: #d32f2f; margin: 0 0 1rem; min-height: 1.2em; }
+    .mws-login-error[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Login config is injected as HTML-attribute-escaped data-* values; the script
+       below reads them as plain strings, so no untrusted value is ever templated
+       into executable JavaScript. -->
+  <div class="mws-login-wrap">
+    <div class="mws-login-card">
+      <h1>MWS Admin</h1>
+      <p id="login-error" class="mws-login-error" role="alert" hidden></p>
+      <form id="login-form"
+            data-path-prefix="{{pathPrefix}}"
+            data-redirect="{{redirect}}"
+            autocomplete="on">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username"
+               required autofocus>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password" required>
+        <button id="login-submit" class="mws-btn mws-btn-primary" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    const form = document.getElementById("login-form");
+    const errorBox = document.getElementById("login-error");
+    const submitBtn = document.getElementById("login-submit");
+    const pathPrefix = form.dataset.pathPrefix || "";
+    const redirect = form.dataset.redirect || (pathPrefix + "/admin-htmx");
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.hidden = false;
+    }
+
+    async function postJson(path, data) {
+      const res = await fetch(pathPrefix + path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "TiddlyWiki",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error((await res.text()) || ("Request failed (" + res.status + ")"));
+      return res.json();
+    }
+
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      errorBox.hidden = true;
+      submitBtn.disabled = true;
+
+      const username = form.username.value;
+      const password = form.password.value;
+
+      try {
+        // Load the self-hosted OPAQUE client (WASM inlined; no CDN, works offline).
+        const opaque = await import(pathPrefix + "/admin-htmx/opaque.js");
+        await opaque.ready;
+
+        // OPAQUE handshake: the password never leaves the browser in plaintext.
+        const { clientLoginState, startLoginRequest } = opaque.client.startLogin({ password });
+        const { loginResponse, loginSession } = await postJson("/login/1", { username, startLoginRequest });
+
+        const result = opaque.client.finishLogin({ clientLoginState, loginResponse, password });
+        if (!result) throw new Error("Login failed. Please check your credentials.");
+
+        await postJson("/login/2", { finishLoginRequest: result.finishLoginRequest, loginSession });
+
+        // Server has set the HttpOnly session cookie; go to the validated target.
+        window.location.assign(redirect);
+      } catch (err) {
+        showError(err && err.message ? err.message : String(err));
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
