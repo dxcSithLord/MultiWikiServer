@@ -29,8 +29,6 @@
   },
   "exclude": [
     "dist",
-    "packages/react-admin",
-    "packages/react-admin/src/*",
     "plugins/client/src/types.d.ts"
   ],
   "include": [

@@ -23,7 +23,6 @@
     "packages/commander",
     "packages/server",
     "packages/mws",
-    "packages/react-admin",
     "packages/tiddlywiki-types",
     "packages/utils",
     "packages/multipart-parser",

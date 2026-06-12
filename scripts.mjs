@@ -68,13 +68,6 @@ const prismaFolder = "prisma";
         DATABASE_URL: "file:test.sqlite"
       });
       break;
-    case "client-types": {
-      const res = await start("node --trace-uncaught mws.dev.mjs", ["build-types"], {}, {
-        pipeOut: true,
-      });
-      writeFileSync("packages/react-admin/src/server-types.ts", res);
-      break;
-    }
     case "build:types": {
       await start("npx tsc -p tsconfig.types.json", process.argv.slice(3));
       break;
