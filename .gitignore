@@ -11,3 +11,8 @@ editions/mws-docs/tiddlers/$__StoryList.tid
 /tests
 /tests-output
 /tests-temp
+
+# Local Claude Code settings (machine/user-specific, not portable across checkouts).
+# Shared skills/agents under .claude/ are committed; only local overrides are ignored.
+.claude/settings.local.json
+.claude/**/*.local.json
