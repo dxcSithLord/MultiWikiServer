@@ -58,6 +58,8 @@ export class ServerState {
       // { key: "siteDescription", description: "Description for the site", valueType: "string" },
       { key: "enableExternalPlugins", description: "Serve TiddlyWiki plugins via script tags", valueType: "boolean" },
       { key: "enableGzip", description: "Enable gzip compression for responses", valueType: "boolean" },
+      { key: "enableETagCaching", description: "Enable HTTP ETag caching for wiki index pages (304 Not Modified responses)", valueType: "boolean" },
+      { key: "enableCSP", description: "Enable Content-Security-Policy header for enhanced security", valueType: "boolean" },
       // { key: "enableResponseCompression", description: "Compress server responses", valueType: "boolean" },
       // { key: "enableBrowserCache", description: "Enable browser caching of static assets", valueType: "boolean" },
       // { key: "attachmentsEnabled", description: "Enable attachments in the wiki", valueType: "boolean" },
@@ -99,6 +101,8 @@ export class ServerState {
 
     this.enableExternalPlugins = existing.enableExternalPlugins === "true";
     this.enableGzip = existing.enableGzip === "true";
+    this.enableETagCaching = existing.enableETagCaching === "true";
+    this.enableCSP = existing.enableCSP === "true";
   }
 
 
@@ -143,6 +147,8 @@ export class ServerState {
 
   enableExternalPlugins = true;
   enableGzip = true;
+  enableETagCaching = true;
+  enableCSP = false;
 
   attachmentsEnabled = false;
   attachmentSizeLimit = 0; // 100 * 1024; // 100 KB
