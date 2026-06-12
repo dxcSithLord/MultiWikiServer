@@ -3,7 +3,6 @@ import { Router, ServerRoute, BodyFormat, Streamer, RouteMatch } from "@tiddlywi
 import { StateObject } from "./RequestState";
 import { ServerState } from "./ServerState";
 import { AuthUser, SessionManager } from "./services/sessions";
-import { setupDevServer } from "./services/setupDevServer";
 import helmet from "helmet";
 import { IncomingMessage, ServerResponse } from "http";
 
@@ -29,7 +28,6 @@ declare module "@tiddlywiki/server" {
 
   interface Router {
     config: ServerState;
-    sendAdmin: ART<typeof setupDevServer>;
     helmet: ART<typeof helmet>;
   }
 
@@ -46,7 +44,6 @@ declare module "@tiddlywiki/server" {
 serverEvents.on("listen.router.init", async (listen, router) => {
   router.allowedRequestedWithHeaders.push("TiddlyWiki");
   router.config = listen.config;
-  router.sendAdmin = await setupDevServer(listen.config);
   router.createServerRequest = <B extends BodyFormat>(
     streamer: Streamer, routePath: RouteMatch[], bodyFormat: B
   ) => {

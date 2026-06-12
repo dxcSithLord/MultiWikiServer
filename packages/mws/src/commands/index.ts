@@ -4,7 +4,6 @@ import * as load_archive from "./load-archive";
 import * as init_store from "./init-store";
 import * as manager from "./manager";
 import * as tests_complete from "./tests-complete";
-import * as build_client from "./build-client";
 import * as build_types from "./build-types";
 import * as listen from "./listen";
 import { BaseCommand, CommandInfo } from "@tiddlywiki/commander";
@@ -19,7 +18,6 @@ export const commands = {
   init_store,
   manager,
   tests_complete,
-  build_client,
   build_types,
 } as const satisfies Record<string, {
   info: CommandInfo,

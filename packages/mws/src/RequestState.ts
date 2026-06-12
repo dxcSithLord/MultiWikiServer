@@ -3,7 +3,6 @@ import { Types } from '@tiddlywiki/mws-prisma/runtime/library';
 import { ServerState } from "./ServerState";
 import { BodyFormat, RouteMatch, Router, ServerRequestClass, Streamer } from "@tiddlywiki/server";
 import { SendError, SendErrorReasonData } from "@tiddlywiki/server";
-import { ServerToReactAdmin } from './services/setupDevServer';
 
 export class StateObject<
   B extends BodyFormat = BodyFormat,
@@ -14,7 +13,6 @@ export class StateObject<
   config;
   user;
   engine;
-  sendAdmin;
   asserted;
   PasswordService;
   pluginCache;
@@ -29,7 +27,6 @@ export class StateObject<
     this.pluginCache = router.config.pluginCache;
 
     this.asserted = false;
-    this.sendAdmin = (status: number, response: ServerToReactAdmin) => router.sendAdmin(this, status, response);
   }
 
   okUser() {
