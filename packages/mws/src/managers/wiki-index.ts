@@ -8,8 +8,55 @@ import { WikiRecipeRoutes } from "./wiki-recipe";
 import { WikiStatusRoutes } from "./wiki-status";
 import { RECIPE_PREFIX } from "./wiki-utils";
 import { WikiExternalRoutes } from "./wiki-external";
-import { SendError, SendErrorReason } from "@tiddlywiki/server";
+import { SendError, SendErrorReason, ServerRequest } from "@tiddlywiki/server";
 const debugCORS = Debug("mws:cors");
+
+/**
+ * Minimal, dependency-free HTML error page for wiki routes.
+ *
+ * Part of the gradual React -> HTMX cutover (step 2): wiki error pages
+ * previously rendered through the React admin SPA via
+ * `state.sendAdmin(status, { sendError })`. This responder removes that
+ * dependency. All dynamic values are HTML-escaped to prevent XSS (OWASP).
+ */
+function sendWikiError(state: ServerRequest, error: SendError<any>) {
+  const status = Number(error.status) || 500;
+  const reason = escapeHtml(String(error.reason ?? "ERROR"));
+  const message = error.details && typeof error.details.message === "string"
+    ? escapeHtml(error.details.message)
+    : "";
+  return state.sendBuffer(status, {
+    "content-type": "text/html; charset=utf-8",
+  }, Buffer.from(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${status} ${reason}</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 100px auto; text-align: center; }
+    h1 { color: #d32f2f; }
+    p { color: #444; }
+  </style>
+</head>
+<body>
+  <h1>${status} ${reason}</h1>
+  ${message ? `<p>${message}</p>` : ""}
+  <p><a href="${escapeHtml(state.pathPrefix)}/">Return to Home</a></p>
+</body>
+</html>
+`, "utf-8"));
+}
+
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  };
+  return text.replace(/[&<>"']/g, (m) => map[m]);
+}
 const debugSSE = Debug("mws:sse");
 
 
@@ -85,7 +132,7 @@ serverEvents.on("mws.routes", (root, config) => {
       const error = new SendError("RECIPE_NOT_FOUND", 404, {
         recipeName: state.pathParams.recipe_name
       })
-      throw await state.sendAdmin(error.status, { sendError: error });
+      throw await sendWikiError(state, error);
     }
 
     if (Debug.enabled("server:handler:timing")) console.time(timekey);
@@ -114,13 +161,13 @@ serverEvents.on("mws.routes", (root, config) => {
     }
 
     if (e instanceof SendError) {
-      await state.sendAdmin(e.status, { sendError: e });
+      await sendWikiError(state, e);
     } else {
       console.log("Unexpected error in wiki index route", e);
       const error = new SendError("INTERNAL_SERVER_ERROR", 500, {
         message: "An unexpected error occurred. Details have been logged.",
       });
-      await state.sendAdmin(error.status, { sendError: error });
+      await sendWikiError(state, error);
     }
     throw STREAM_ENDED;
   });

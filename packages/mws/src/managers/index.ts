@@ -19,6 +19,21 @@ export * from "./wiki-index";
 
 serverEvents.on("mws.routes", (root: ServerRoute, config: ServerState) => {
   StatusManager.defineRoutes(root);
+
+  // Gradual React -> HTMX cutover (step 1): the front door (exact "/") now
+  // redirects to the HTMX admin. Registered on "mws.routes" so it is matched
+  // before the React fallback below (first match wins). The regex matches ONLY
+  // "/", so "/login" and other paths still fall through to the React SPA during
+  // the gradual phase. The HTMX admin itself gates auth (unauthenticated users
+  // are sent on to "/login"), so no auth check is needed here.
+  root.defineRoute({
+    path: /^\/$/,
+    method: ["GET"],
+  }, async (state) => {
+    return state.sendBuffer(302, {
+      "location": `${state.pathPrefix}/admin-htmx`,
+    }, Buffer.from("Redirecting to admin...", "utf-8"));
+  });
 });
 
 serverEvents.on("mws.routes.fallback", (root, config) => {
