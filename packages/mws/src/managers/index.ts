@@ -38,13 +38,20 @@ serverEvents.on("mws.routes", (root: ServerRoute, config: ServerState) => {
 
 serverEvents.on("mws.routes.fallback", (root, config) => {
 
+  // Clean-phase cutover (step 4): the catch-all fallback no longer serves the
+  // React SPA. Every named surface now has its own route (HTMX admin, /login,
+  // /wiki, the admin/login APIs), so anything reaching here is an unmatched GET.
+  // Redirect it to the HTMX admin home, which itself gates auth (sending
+  // unauthenticated users on to /login). This drops the last functional
+  // dependency on state.sendAdmin / the React bundle from the live request path.
   root.defineRoute({
     method: ['GET'],
     path: /^\/.*/,
     bodyFormat: "stream",
   }, async state => {
-    await state.sendAdmin(200, null);
-    return STREAM_ENDED;
+    return state.sendBuffer(302, {
+      "location": `${state.pathPrefix}/admin-htmx`,
+    }, Buffer.from("Redirecting to admin...", "utf-8"));
   });
 });
 
