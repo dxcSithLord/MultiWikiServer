@@ -76,7 +76,12 @@ export class StateObject<
     recipe_name: PrismaField<"Recipes", "recipe_name">,
     needWrite: boolean
   ) {
-    const { user_id, isAdmin, role_ids } = this.user;
+    const { user_id, isAdmin, roles } = this.user;
+    // AuthUser carries `roles` ({role_id, role_name}); derive the role_ids the
+    // ACL helpers expect. Without this, this.user.role_ids is undefined and the
+    // role-based ACL clause in getWhereACL silently drops, so non-admins can only
+    // reach resources they own and every role grant is ignored.
+    const role_ids = roles.map(r => r.role_id);
 
     const prisma = this.engine;
     const read = this.getBagWhereACL({ permission: "READ", user_id, role_ids });
@@ -163,7 +168,12 @@ export class StateObject<
     bag_name: PrismaField<"Bags", "bag_name">,
     needWrite: boolean
   ) {
-    const { user_id, isAdmin, role_ids } = this.user;
+    const { user_id, isAdmin, roles } = this.user;
+    // AuthUser carries `roles` ({role_id, role_name}); derive the role_ids the
+    // ACL helpers expect. Without this, this.user.role_ids is undefined and the
+    // role-based ACL clause in getWhereACL silently drops, so non-admins can only
+    // reach resources they own and every role grant is ignored.
+    const role_ids = roles.map(r => r.role_id);
     const prisma = this.engine;
     const read = this.getBagWhereACL({ permission: "READ", user_id, role_ids });
     const write = this.getBagWhereACL({ permission: "WRITE", user_id, role_ids });
