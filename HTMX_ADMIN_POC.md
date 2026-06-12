@@ -1,5 +1,10 @@
 # HTMX Admin Proof-of-Concept
 
+> **Superseded / historical.** The HTMX migration is complete and React has been fully
+> removed. This document is kept as a record of the original proof-of-concept; for the
+> current design see [`ARCHITECTURE.md`](./ARCHITECTURE.md). References below to React as
+> the "current" admin are historical.
+
 ## Overview
 
 This is a proof-of-concept implementation showing how to replace the React-based admin interface with a self-contained, vanilla JavaScript solution that works without external dependencies.
