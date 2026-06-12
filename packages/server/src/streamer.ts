@@ -3,6 +3,7 @@ import send, { SendOptions } from 'send';
 import { Readable } from 'stream';
 import { IncomingMessage, ServerResponse, IncomingHttpHeaders as NodeIncomingHeaders, OutgoingHttpHeaders } from 'node:http';
 import { is } from './utils';
+import { SendError } from './SendError';
 import { createReadStream } from 'node:fs';
 import { Writable } from 'node:stream';
 import Debug from "debug";
@@ -163,6 +164,19 @@ export class Streamer {
   catcher = (error: unknown) => {
     if (error === SYMBOL_IGNORE_ERROR) return;
     if (error === STREAM_ENDED) return;
+    // A SendError carries an explicit HTTP status (e.g. 403/404). Honour it
+    // instead of masking it as a 500 — route handlers throw SendError to signal
+    // a specific response, and this catcher runs before the top-level handler
+    // that already handles it. Expected client errors are not logged as faults.
+    if (error instanceof SendError) {
+      if (!this.headersSent) {
+        this.sendString(error.status, {
+          "content-type": "application/json",
+          "x-reason": error.reason,
+        }, JSON.stringify(error), "utf8");
+      }
+      return;
+    }
     const tag = this.urlInfo.href;
     console.error(tag, error);
     if (!this.headersSent) {
