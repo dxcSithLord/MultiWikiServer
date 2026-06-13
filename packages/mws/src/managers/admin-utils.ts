@@ -25,6 +25,13 @@ export function admin<T extends zod.ZodTypeAny, R extends JsonValue>(
 
       const url = new URL(state.headers.referer);
 
+      // CSRF: the referer must be same-origin — its host must match the request's own
+      // Host. Validating the pathname alone let a cross-origin referer (e.g.
+      // https://evil.com/admin) through. A TLS-terminating reverse proxy such as
+      // `tailscale serve` preserves the Host header, so legitimate requests still match.
+      if (url.host !== state.headers.host)
+        throw state.sendEmpty(400, { "x-reason": "Referer host does not match request host" });
+
       const allowed = url.pathname.startsWith(state.pathPrefix + "/admin/")
         || url.pathname === state.pathPrefix + "/admin"
         || url.pathname === state.pathPrefix + "/admin-htmx"

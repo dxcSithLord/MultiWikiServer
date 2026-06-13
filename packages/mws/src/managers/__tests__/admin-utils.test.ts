@@ -30,6 +30,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -53,6 +54,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin/users",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -76,6 +78,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin-htmx",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -99,6 +102,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin-htmx/profile",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -122,6 +126,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -145,6 +150,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/login",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -168,6 +174,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://evil.com/admin",
+          host: "localhost:8080",
           origin: "http://evil.com",
         },
         pathPrefix: "",
@@ -190,6 +197,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin-htmx-evil",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
@@ -234,6 +242,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/wiki/admin-htmx",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "/wiki",
@@ -257,6 +266,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin-htmx",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "/wiki",
@@ -287,6 +297,7 @@ describe("Admin Utils - CSRF Protection", () => {
       const mockState: any = {
         headers: {
           referer: "http://localhost:8080/admin-htmx",
+          host: "localhost:8080",
           origin: "http://localhost:8080",
         },
         pathPrefix: "",
