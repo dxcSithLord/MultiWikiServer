@@ -9,7 +9,8 @@
  * - No memory leaks from accumulated listeners
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+const mock = vi.fn;
 import { EventEmitter } from "events";
 
 // Mock ServerEvents for testing SSE cleanup

@@ -142,13 +142,20 @@ export class UserError extends Error {
  * however it uses path.resolve, not require.resolve. 
  */
 
+// Prefer module.filename (CJS) when it's actually populated, else fall back to
+// import.meta.url. Test runners (vitest) define `module` without a `.filename`,
+// which made path.resolve(undefined, ...) throw; the prod ESM bundle has module
+// undefined and already used import.meta.url, so this is behaviour-preserving there.
+function distFilename() {
+  return (typeof module !== "undefined" && module.filename)
+    ? module.filename
+    : fileURLToPath(import.meta.url);
+}
 export function dist_resolve(filepath: string) {
-  const filename = typeof module === "undefined" ? fileURLToPath(import.meta.url) : module.filename;
-  return path.resolve(path.dirname(filename), filepath);
+  return path.resolve(path.dirname(distFilename()), filepath);
 }
 export function dist_require_resolve(filepath: string) {
-  const filename = typeof module === "undefined" ? fileURLToPath(import.meta.url) : module.filename;
-  return createRequire(filename).resolve(filepath);
+  return createRequire(distFilename()).resolve(filepath);
 }
 
 

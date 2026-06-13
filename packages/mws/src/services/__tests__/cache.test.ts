@@ -8,7 +8,8 @@
  * - Validation success for valid templates
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+const mock = vi.fn;
 
 const REQUIRED_MARKERS = {
   HEAD_CLOSE: '</head>',

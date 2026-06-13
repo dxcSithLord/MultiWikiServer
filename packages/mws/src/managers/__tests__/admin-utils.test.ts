@@ -8,7 +8,8 @@
  * - Blocked paths
  */
 
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect, vi } from "vitest";
+const mock = vi.fn;
 import { admin } from "../admin-utils";
 
 // Mock dependencies
