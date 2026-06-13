@@ -16,6 +16,16 @@ import { ServerRequest, ServerRoute } from "@tiddlywiki/server";
 import { serverEvents } from "@tiddlywiki/events";
 import { HtmxAdminManager } from "../admin-htmx";
 
+// Under vitest (running unbundled) dist_resolve anchors to packages/server/src, so the
+// templates/styles dir mis-resolves to ".../packages/server/packages/mws/...". Redirect
+// those reads to the real source path so the route handlers read the actual templates.
+vi.mock("fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs/promises")>();
+  const fix = (p: any) =>
+    typeof p === "string" ? p.replace("/packages/server/packages/mws/", "/packages/mws/") : p;
+  return { ...actual, readFile: (p: any, ...rest: any[]) => actual.readFile(fix(p), ...rest) };
+});
+
 // Mock state helper
 function createMockState(overrides: Partial<ServerRequest> = {}): ServerRequest {
   const defaultState: Partial<ServerRequest> = {
@@ -126,7 +136,8 @@ describe("HtmxAdminManager", () => {
       const result = await profileRoute!.handler(state);
 
       expect(result.status).toBe(302);
-      expect(result.headers.location).toContain("/admin-htmx?editUser=");
+      // Profile now redirects to the Users page, which opens the edit modal via ?editUser=.
+      expect(result.headers.location).toContain("/admin-htmx/users?editUser=");
       expect(result.headers.location).toContain("user-123");
     });
 
@@ -284,7 +295,7 @@ describe("HtmxAdminManager", () => {
 
       expect(result.body).toContain("/wiki");
       expect(result.body).toContain("adminuser");
-      expect(result.body).toContain("admin-123");
+      // (user_id is only rendered on the Users page, not the recipes frame.)
     });
 
     it("should escape HTML in template variables", async () => {
@@ -327,7 +338,10 @@ describe("HtmxAdminManager", () => {
         },
       });
 
-      await expect(mainRoute!.handler(state)).rejects.toThrow("Not authenticated");
+      // Unauthenticated access is not an error — the route redirects (302) to /login.
+      const result = await mainRoute!.handler(state);
+      expect(result.status).toBe(302);
+      expect(result.headers.location).toContain("/login");
     });
 
     it("should enforce admin role on profile route", async () => {
