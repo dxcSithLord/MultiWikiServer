@@ -65,6 +65,8 @@
   },
   "devDependencies": {
     "@prisma/client": "6.10.1",
+    "@stoplight/spectral-cli": "^6.16.0",
+    "@stoplight/spectral-owasp-ruleset": "^2.0.1",
     "@types/node": "^24.6.0",
     "prettier": "^3.6.1",
     "prisma": "6.10.1",

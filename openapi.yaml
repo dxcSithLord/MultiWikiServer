@@ -1,0 +1,1203 @@
+openapi: 3.1.0
+
+info:
+  title: MultiWikiServer (MWS) HTTP API
+  version: "1.0.0"
+  description: |
+    Complete HTTP surface of the MultiWikiServer (MWS) service in this fork. Every route
+    handled by the server is documented here; the companion skill
+    `.claude/skills/openapi-coverage/` asserts programmatically that this file stays in sync
+    with the routes registered in `packages/mws/src/**`.
+
+    ## Authentication & sessions
+    Authentication uses the **OPAQUE** augmented-PAKE protocol over a two-step handshake:
+    `POST /login/1` (client sends `startLoginRequest`, server returns a `loginResponse` +
+    opaque `loginSession`) then `POST /login/2` (client sends `finishLoginRequest` + the
+    `loginSession`; on success the server sets an HttpOnly `session` cookie and returns the
+    `session_id`). The raw session key is never sent to the client. Logout is `POST /logout`.
+
+    ## Bags, recipes & ACLs
+    Tiddlers live in **bags**; a **recipe** is an ordered list of bags (last writable bag wins
+    for saves, earlier bags shadow later ones for reads). Access is governed per bag/recipe by
+    **ACL** entries (`READ` / `WRITE` / `ADMIN`) keyed on role, plus an owner and a global
+    admin role. See `ARCHITECTURE.md` in the repo root for the full model.
+
+    ## CSRF / same-origin protections
+    Mutating and admin endpoints require the header `X-Requested-With: TiddlyWiki`
+    (`securityChecks.requestedWithHeader`). The admin API (`POST /admin/{key}`) additionally
+    requires a same-origin `Referer` pointing at `/`, `/login`, `/admin`, or `/admin-htmx`.
+
+    ## Errors
+    Most JSON endpoints emit errors in the `SendError` shape `{ status, reason, details }`
+    (see `components.schemas.SendError`). Wiki page routes (`GET /wiki/{recipe_name}`) render
+    an HTML error page instead. Some handlers throw a plain string which surfaces as a
+    `400`/`500` with a non-JSON body.
+
+externalDocs:
+  description: Architecture & data model
+  url: https://github.com/TiddlyWiki/MultiWikiServer/blob/main/ARCHITECTURE.md
+
+servers:
+  - url: /
+    description: |
+      Internal, self-hosted deployment root (local / on-premise / production). An optional
+      path prefix may be configured; all paths are relative to it.
+    x-internal: true
+
+tags:
+  - name: Auth
+    description: OPAQUE login handshake and logout (`packages/mws/src/services/sessions.ts`)
+  - name: Admin API
+    description: |
+      JSON admin/data API mounted at `POST /admin/{key}`
+      (`packages/mws/src/managers/admin-*.ts`, `index.ts`). Requires the
+      `X-Requested-With: TiddlyWiki` header and a same-origin referer.
+  - name: Wiki Sync
+    description: |
+      TiddlyWiki sync-adaptor + wiki rendering routes for recipes and bags
+      (`packages/mws/src/managers/wiki-*.ts`, `services/cache.ts`, `services/tw-routes.ts`).
+  - name: Admin UI
+    description: |
+      Server-rendered HTMX admin pages, the login page, and static assets
+      (`packages/mws/src/managers/admin-htmx.ts`, `managers/index.ts`).
+
+security:
+  - sessionCookie: []
+
+paths:
+
+  # ───────────────────────────── Auth ─────────────────────────────
+  /login/1:
+    post:
+      tags: [Auth]
+      summary: OPAQUE login — step 1 (start)
+      description: |
+        First leg of the OPAQUE handshake. The client sends its `username` and
+        `startLoginRequest`; the server replies with a `loginResponse` and an opaque
+        `loginSession` token to be echoed back in step 2.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Login1Request' }
+      responses:
+        '200':
+          description: OPAQUE server login response + opaque session token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Login1Response' }
+        '400': { $ref: '#/components/responses/StringError' }
+
+  /login/2:
+    post:
+      tags: [Auth]
+      summary: OPAQUE login — step 2 (finish)
+      description: |
+        Second leg of the handshake. On success the server creates a session and (unless
+        `skipCookie` is set) sets an HttpOnly `session` cookie. The session key itself is
+        never returned.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Login2Request' }
+      responses:
+        '200':
+          description: Session established.
+          headers:
+            Set-Cookie:
+              description: HttpOnly `session` cookie (omitted when `skipCookie` is true).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Login2Response' }
+        '400': { $ref: '#/components/responses/StringError' }
+
+  /logout:
+    post:
+      tags: [Auth]
+      summary: Log out and clear the session cookie
+      description: |
+        Deletes the current session and expires the `session` cookie. May be called with no
+        body (cookie session) or with `{ session_id, signature, skipCookie: true }` to revoke
+        a specific session by signature without relying on the cookie.
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '200':
+          description: Logged out (response body is `null`).
+          content:
+            application/json:
+              schema: { type: 'null' }
+        '400': { $ref: '#/components/responses/StringError' }
+
+  /user/status:
+    get:
+      tags: [Auth]
+      summary: Current login / identity status
+      description: |
+        Returns the authenticated user's identity, roles, and server time, or
+        `{ isLoggedIn: false }` when not signed in. Requires `X-Requested-With: TiddlyWiki`.
+        `HEAD` accepted. Source: `managers/user-status.ts`.
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      responses:
+        '200':
+          description: Login status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserStatus' }
+    head:
+      tags: [Auth]
+      summary: Headers for login status
+      responses:
+        '200': { description: OK }
+
+  # ─────────────────────────── Admin API ───────────────────────────
+  /admin/{key}:
+    post:
+      tags: [Admin API]
+      operationId: adminCall
+      summary: Invoke an admin/data API method
+      description: |
+        Single entry point for the JSON admin API. The `{key}` path segment selects the
+        method; the request body and response shape depend on `{key}` (see the per-key
+        schemas referenced below). All keys require authentication, the
+        `X-Requested-With: TiddlyWiki` header, and a same-origin referer. Most keys further
+        require the admin role (`okAdmin`); a few (`user_edit_data`, `user_update_password`)
+        allow a user to act on their own record.
+
+        Source: `managers/admin-users.ts` (`UserKeyMap`), `managers/admin-recipes.ts`
+        (`RecipeKeyMap`), `managers/admin-settings.ts` (`SettingsKeyMap`), `managers/index.ts`
+        (`StatusKeyMap`).
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+        - name: key
+          in: path
+          required: true
+          description: The admin method to invoke.
+          schema:
+            type: string
+            enum:
+              - index_json
+              - user_list
+              - user_create
+              - user_update
+              - user_delete
+              - user_edit_data
+              - user_update_password
+              - user_generate_temp_password
+              - role_create
+              - role_update
+              - recipe_create_or_update
+              - recipe_delete
+              - recipe_acl_update
+              - bag_create_or_update
+              - bag_delete
+              - bag_acl_update
+              - settings_read
+              - settings_update
+      requestBody:
+        description: |
+          Body shape depends on `{key}`. Keys `index_json`, `user_list`, and `settings_read`
+          take no body (`undefined`).
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AdminEmptyBody'
+                - $ref: '#/components/schemas/UserEditDataRequest'
+                - $ref: '#/components/schemas/UserCreateRequest'
+                - $ref: '#/components/schemas/UserUpdateRequest'
+                - $ref: '#/components/schemas/UserDeleteRequest'
+                - $ref: '#/components/schemas/UserUpdatePasswordRequest'
+                - $ref: '#/components/schemas/UserGenerateTempPasswordRequest'
+                - $ref: '#/components/schemas/RoleCreateRequest'
+                - $ref: '#/components/schemas/RoleUpdateRequest'
+                - $ref: '#/components/schemas/RecipeCreateOrUpdateRequest'
+                - $ref: '#/components/schemas/RecipeDeleteRequest'
+                - $ref: '#/components/schemas/AclUpdateRequest'
+                - $ref: '#/components/schemas/BagCreateOrUpdateRequest'
+                - $ref: '#/components/schemas/BagDeleteRequest'
+                - $ref: '#/components/schemas/SettingsUpdateRequest'
+      responses:
+        '200':
+          description: |
+            Method-specific JSON result. Many mutating keys return `null` on success.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { type: 'null' }
+                  - $ref: '#/components/schemas/IndexJson'
+                  - { type: array, items: { $ref: '#/components/schemas/User' } }
+                  - $ref: '#/components/schemas/UserEditData'
+                  - $ref: '#/components/schemas/Recipe'
+                  - $ref: '#/components/schemas/Bag'
+                  - $ref: '#/components/schemas/Role'
+                  - { type: array, items: { $ref: '#/components/schemas/SettingItem' } }
+                  - $ref: '#/components/schemas/TempPasswordResponse'
+                  - $ref: '#/components/schemas/CreatedUser'
+                  - $ref: '#/components/schemas/SuccessFlag'
+        '400': { $ref: '#/components/responses/SendErrorResponse' }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+        '404': { $ref: '#/components/responses/SendErrorResponse' }
+
+  # ─────────────────────────── Wiki Sync ───────────────────────────
+  /wiki/{recipe_name}:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+    get:
+      tags: [Wiki Sync]
+      summary: Render a recipe as a full TiddlyWiki HTML page
+      description: Serves the booted single-file wiki for the recipe. `HEAD` is also accepted.
+      responses:
+        '200':
+          description: TiddlyWiki HTML document.
+          content:
+            text/html:
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/HtmlError' }
+        '404': { $ref: '#/components/responses/HtmlError' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for the recipe wiki page
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/HtmlError' }
+
+  /recipe/{recipe_name}/tiddlers/{title}:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+      - $ref: '#/components/parameters/Title'
+    get:
+      tags: [Wiki Sync]
+      summary: Load a single tiddler from a recipe
+      description: Resolves the tiddler through the recipe's bag stack and serves it. `HEAD` accepted.
+      responses:
+        '200':
+          description: The tiddler (TiddlyWeb JSON, or the tiddler's own content type for binary/text).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tiddler' }
+        '404': { $ref: '#/components/responses/SendErrorResponse' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for a recipe tiddler
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/SendErrorResponse' }
+    put:
+      tags: [Wiki Sync]
+      summary: Save a tiddler into the recipe's writable bag
+      description: |
+        Accepts either a JSON tiddler or the `application/x-mws-tiddler` wire format
+        (`Content-Type` selects the parser). Requires `X-Requested-With: TiddlyWiki`.
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TiddlerFields' }
+          application/x-mws-tiddler:
+            schema: { type: string }
+      responses:
+        '200':
+          description: The writable bag and the new revision id.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveResult' }
+        '400': { $ref: '#/components/responses/SendErrorResponse' }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+    delete:
+      tags: [Wiki Sync]
+      summary: Delete a tiddler from the recipe's writable bag
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      responses:
+        '200':
+          description: Deletion result (bag + revision id).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeleteResult' }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+        '404': { $ref: '#/components/responses/SendErrorResponse' }
+
+  /recipe/{recipe_name}/rpc/{key}:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+      - name: key
+        in: path
+        required: true
+        description: |
+          RPC operation. The same `PUT` path backs the load-list, save-list, and delete-list
+          RPCs (`rpcLoadRecipeTiddlerList`, `rpcSaveRecipeTiddlerList`,
+          `rpcDeleteRecipeTiddlerList` in `managers/wiki-recipe.ts`); the body shape selects
+          the operation.
+        schema: { type: string }
+    put:
+      tags: [Wiki Sync]
+      summary: Bulk tiddler RPC (load / save / delete a list)
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/RpcTitlesBody'
+                - $ref: '#/components/schemas/RpcTiddlersBody'
+      responses:
+        '200':
+          description: Array of affected tiddlers / revisions (shape depends on the RPC).
+          content:
+            application/json:
+              schema: { type: array, items: { type: object, additionalProperties: true } }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+
+  /recipe/{recipe_name}/status:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+    get:
+      tags: [Wiki Sync]
+      summary: Recipe status for the TW5 client
+      description: Returns the current user's identity and whether the recipe is read-only for them.
+      responses:
+        '200':
+          description: Recipe status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeStatus' }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+        '404': { $ref: '#/components/responses/SendErrorResponse' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for recipe status
+      responses:
+        '200': { description: OK }
+
+  /recipe/{recipe_name}/events:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+    get:
+      tags: [Wiki Sync]
+      summary: Server-Sent Events stream of tiddler changes
+      description: |
+        Opens an SSE (`text/event-stream`) connection that emits `tiddler.since-last-event`
+        events as bags in the recipe change. Requires a `Last-Event-ID` header or a
+        `first-event-id` query parameter.
+      parameters:
+        - name: first-event-id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: SSE stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+
+  /recipe/{recipe_name}/bags:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+    get:
+      tags: [Wiki Sync]
+      summary: List the bags that make up a recipe (in order)
+      responses:
+        '200':
+          description: Ordered list of recipe bags.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RecipeBag' } }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for recipe bag list
+      responses:
+        '200': { description: OK }
+
+  /recipe/{recipe_name}/bags/{bag_name}/state:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+      - $ref: '#/components/parameters/BagName'
+    get:
+      tags: [Wiki Sync]
+      summary: Skinny tiddler-list state for one bag
+      description: Returns the title/revision list for a bag; supports ETag/`304` revalidation.
+      parameters:
+        - name: last_known_revision_id
+          in: query
+          schema: { type: string }
+        - name: include_deleted
+          in: query
+          schema: { type: string, enum: [yes, no] }
+      responses:
+        '200':
+          description: Bag tiddler state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BagState' }
+        '304': { description: Not modified (ETag match). }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for bag state
+      responses:
+        '200': { description: OK }
+
+  /recipe/{recipe_name}/all-bags-state:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+    get:
+      tags: [Wiki Sync]
+      summary: Skinny tiddler-list state for every bag in the recipe
+      description: |
+        Streamed array of per-bag tiddler state. With `gzip_stream=yes` the body is a custom
+        split-gzip stream (`application/gzip`, `x-gzip-stream: yes`). Supports ETag/`304`.
+      parameters:
+        - name: last_known_revision_id
+          in: query
+          schema: { type: string }
+        - name: include_deleted
+          in: query
+          schema: { type: string, enum: [yes, no] }
+        - name: gzip_stream
+          in: query
+          schema: { type: string, enum: [yes, no] }
+      responses:
+        '200':
+          description: Array of per-bag state.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/BagState' } }
+            application/gzip:
+              schema: { type: string, format: binary }
+        '304': { description: Not modified (ETag match). }
+        '403': { $ref: '#/components/responses/SendErrorResponse' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for all-bags state
+      responses:
+        '200': { description: OK }
+
+  /$cache/{plugin}/plugin.js:
+    parameters:
+      - name: plugin
+        in: path
+        required: true
+        description: Cache key (file-plugin identifier) for the compiled TW5 plugin bundle.
+        schema: { type: string }
+    get:
+      tags: [Wiki Sync]
+      summary: Serve a cached compiled TiddlyWiki plugin bundle
+      description: |
+        Returns the cached `plugin.js` (gzip-negotiated). Supports ETag/`304`. `HEAD` accepted.
+        Source: `services/cache.ts`.
+      security: []
+      responses:
+        '200':
+          description: JavaScript plugin bundle.
+          content:
+            application/javascript:
+              schema: { type: string }
+        '304': { description: Not modified (ETag match). }
+        '404': { $ref: '#/components/responses/SendErrorResponse' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for a cached plugin bundle
+      security: []
+      responses:
+        '200': { description: OK }
+
+  /mws-docs/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        description: Sub-path within the mounted TiddlyWiki docs edition.
+        schema: { type: string }
+    get:
+      tags: [Wiki Sync]
+      summary: Mounted TiddlyWiki docs edition (conditional)
+      description: |
+        A full TiddlyWiki instance mounted at `/mws-docs`, served **only when**
+        `config.enableDocsRoute` is set (`services/tw-routes.ts`). The mount handles
+        `OPTIONS, GET, HEAD, POST, PUT, DELETE` under the prefix; all are proxied into the
+        embedded TW5 server.
+      security: []
+      responses:
+        '200':
+          description: Proxied TiddlyWiki response.
+          content:
+            text/html:
+              schema: { type: string }
+    head: { tags: [Wiki Sync], summary: Mounted docs (HEAD), security: [], responses: { '200': { description: OK } } }
+    post: { tags: [Wiki Sync], summary: Mounted docs (POST), security: [], responses: { '200': { description: OK } } }
+    put: { tags: [Wiki Sync], summary: Mounted docs (PUT), security: [], responses: { '200': { description: OK } } }
+    delete: { tags: [Wiki Sync], summary: Mounted docs (DELETE), security: [], responses: { '200': { description: OK } } }
+    options: { tags: [Wiki Sync], summary: Mounted docs (OPTIONS/CORS preflight), security: [], responses: { '204': { description: No Content } } }
+
+  # ── Wiki Sync: direct bag routes (WikiExternalRoutes — currently DISABLED) ──
+  # These handlers exist in `managers/wiki-external.ts` but their registration block in
+  # `managers/wiki-index.ts` is commented out, so they are NOT live in the current build.
+  # Documented here for completeness and so the coverage audit (which reads source) matches.
+  /recipe/{recipe_name}/tiddlers:
+    parameters:
+      - $ref: '#/components/parameters/RecipeName'
+    post:
+      tags: [Wiki Sync]
+      summary: Upload a tiddler via multipart form (DISABLED)
+      description: |
+        **Currently disabled** (registration commented out in `managers/wiki-index.ts`).
+        Multipart file upload of a single tiddler into the recipe's writable bag.
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Saved tiddler result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveResult' }
+
+  /bag/{bag_name}/tiddlers/{title}:
+    parameters:
+      - $ref: '#/components/parameters/BagName'
+      - $ref: '#/components/parameters/Title'
+    get:
+      tags: [Wiki Sync]
+      summary: Load a tiddler directly from a bag (DISABLED)
+      description: '**Currently disabled** (see `managers/wiki-index.ts`). Source: `managers/wiki-external.ts`.'
+      responses:
+        '200':
+          description: The tiddler.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tiddler' }
+    head:
+      tags: [Wiki Sync]
+      summary: Headers for a bag tiddler (DISABLED)
+      responses:
+        '200': { description: OK }
+    put:
+      tags: [Wiki Sync]
+      summary: Save a tiddler directly to a bag (DISABLED)
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TiddlerFields' }
+          application/x-mws-tiddler:
+            schema: { type: string }
+      responses:
+        '200':
+          description: Save result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveResult' }
+    delete:
+      tags: [Wiki Sync]
+      summary: Delete a tiddler directly from a bag (DISABLED)
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      responses:
+        '200':
+          description: Delete result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeleteResult' }
+
+  /bag/{bag_name}/tiddlers:
+    parameters:
+      - $ref: '#/components/parameters/BagName'
+    post:
+      tags: [Wiki Sync]
+      summary: Upload a tiddler to a bag via multipart form (DISABLED)
+      description: '**Currently disabled** (see `managers/wiki-index.ts`). Source: `managers/wiki-external.ts`.'
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Save result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveResult' }
+
+  # ─────────────────────────── Admin UI ───────────────────────────
+  /:
+    get:
+      tags: [Admin UI]
+      summary: Front door — redirect to the HTMX admin
+      description: |
+        Exact `/` redirects (`302`) to `/admin-htmx`. The unmatched-GET fallback
+        (`GET /*`, regex `^/.*` in `managers/index.ts`) performs the same redirect, so any
+        otherwise-unhandled GET path lands on the admin home (which gates auth).
+      security: []
+      responses:
+        '302':
+          description: Redirect to `/admin-htmx`.
+          headers:
+            Location: { schema: { type: string } }
+
+  /login:
+    get:
+      tags: [Admin UI]
+      summary: HTMX login page
+      description: |
+        Renders the login page (or `302`s to the post-login `redirect` target if already
+        signed in). The `redirect` query param is validated against open-redirects.
+      security: []
+      parameters:
+        - name: redirect
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Login HTML page.
+          content:
+            text/html:
+              schema: { type: string }
+        '302':
+          description: Already signed in — redirect to target.
+          headers:
+            Location: { schema: { type: string } }
+
+  /admin-htmx:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin home (Recipes)
+      description: Default admin page. Redirects to `/login` if unauthenticated; `403` if not an admin.
+      responses:
+        '200':
+          description: Admin Recipes page (HTML).
+          content:
+            text/html:
+              schema: { type: string }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/bags:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Bags page
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/plugins:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Plugins page
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+
+  /admin-htmx/users:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Users page
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/roles:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Roles page
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/settings:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Settings page
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/profile:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Profile redirect
+      description: Redirects (`302`) to the current user's record in the Users page.
+      responses:
+        '302': { description: Redirect to the user's profile. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/styles.css:
+    get:
+      tags: [Admin UI]
+      summary: Admin stylesheet
+      security: []
+      responses:
+        '200':
+          description: CSS (ETag-cached).
+          content:
+            text/css:
+              schema: { type: string }
+        '304': { description: Not modified (ETag match). }
+
+  /admin-htmx/opaque.js:
+    get:
+      tags: [Admin UI]
+      summary: Self-hosted OPAQUE client ESM bundle
+      description: Served locally so the login page works offline (no CDN). ETag-cached.
+      security: []
+      responses:
+        '200':
+          description: JavaScript module.
+          content:
+            text/javascript:
+              schema: { type: string }
+        '304': { description: Not modified (ETag match). }
+
+components:
+
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: |
+        HttpOnly, `SameSite=Strict` session cookie set by `POST /login/2`. Unauthenticated
+        requests to gated routes are redirected to `/login` (UI) or rejected with a
+        `SendError` / string error (API). Admin/mutating routes additionally require the
+        `X-Requested-With: TiddlyWiki` header.
+
+  parameters:
+    XRequestedWith:
+      name: X-Requested-With
+      in: header
+      required: true
+      description: Must be `TiddlyWiki` (CSRF / same-origin guard, `securityChecks.requestedWithHeader`).
+      schema: { type: string, enum: [TiddlyWiki] }
+    RecipeName:
+      name: recipe_name
+      in: path
+      required: true
+      schema: { type: string }
+    BagName:
+      name: bag_name
+      in: path
+      required: true
+      schema: { type: string }
+    Title:
+      name: title
+      in: path
+      required: true
+      description: Tiddler title (URL-encoded).
+      schema: { type: string }
+
+  responses:
+    SendErrorResponse:
+      description: Structured error in the `SendError` envelope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SendError' }
+    StringError:
+      description: |
+        Error surfaced as a plain string body (handlers in `sessions.ts` / admin throw raw
+        strings on validation/auth failure).
+      content:
+        text/plain:
+          schema: { type: string }
+    HtmlError:
+      description: HTML error page (wiki + admin UI routes render HTML rather than JSON).
+      content:
+        text/html:
+          schema: { type: string }
+
+  schemas:
+
+    # ── Errors ──
+    SendError:
+      type: object
+      description: Error envelope produced by `SendError` (`packages/server/src/SendError.ts`).
+      required: [status, reason, details]
+      properties:
+        status:
+          type: integer
+          description: HTTP status code carried by the error.
+        reason:
+          type: string
+          description: Machine-readable reason code.
+          enum:
+            - INTERNAL_SERVER_ERROR
+            - INVALID_X_REQUESTED_WITH
+            - MALFORMED_JSON
+            - NO_ROUTE_MATCHED
+            - METHOD_NOT_ALLOWED
+            - INVALID_BODY_FORMAT
+            - REQUEST_DROPPED
+            - MULTIPART_INVALID_CONTENT_TYPE
+            - MULTIPART_MISSING_BOUNDARY
+            - MULTIPART_INVALID_PART_ENCODING
+            - RECIPE_NOT_FOUND
+            - RECIPE_NO_READ_PERMISSION
+            - RECIPE_NO_WRITE_PERMISSION
+            - RECIPE_MUST_HAVE_BAGS
+            - RECIPE_NO_BAG_AT_POSITION_ZERO
+            - BAG_NOT_FOUND
+            - BAG_NO_READ_PERMISSION
+            - BAG_NO_WRITE_PERMISSION
+            - BAG_DOES_NOT_HAVE_THIS_TIDDLER
+            - PAGE_NOT_AUTHORIZED_FOR_ENDPOINT
+            - RESPONSE_INTERCEPTED_BY_CHECKER
+            - TIDDLER_WIRE_FORMAT_UNKNOWN
+            - SETTING_KEY_INVALID
+            - LAST_EVENT_ID_NOT_PROVIDED
+            - INCORRECT_SERVER_RESPONSE_SENT
+        details:
+          description: Reason-specific structured details, or `null`.
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: 'null'
+
+    # ── Core domain ──
+    TiddlerFields:
+      type: object
+      description: Arbitrary TiddlyWiki tiddler fields; `title` is required, other fields are free-form strings.
+      required: [title]
+      properties:
+        title: { type: string }
+        text: { type: string }
+        type: { type: string }
+        tags: { type: string }
+      additionalProperties: { type: string }
+    Tiddler:
+      allOf:
+        - $ref: '#/components/schemas/TiddlerFields'
+      description: A tiddler (its fields). Binary/text tiddlers may be served with their own content type.
+    Role:
+      type: object
+      properties:
+        role_id: { type: string }
+        role_name: { type: string }
+        description: { type: string }
+    User:
+      type: object
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        email: { type: string }
+        roles: { type: array, items: { $ref: '#/components/schemas/Role' } }
+        last_login: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    ACLEntry:
+      type: object
+      required: [role_id, permission]
+      properties:
+        role_id: { type: string }
+        permission: { type: string, enum: [READ, WRITE, ADMIN] }
+    Bag:
+      type: object
+      properties:
+        bag_id: { type: string }
+        bag_name: { type: string }
+        description: { type: string }
+        owner_id: { type: [string, 'null'] }
+        acl: { type: array, items: { $ref: '#/components/schemas/ACLEntry' } }
+    Recipe:
+      type: object
+      properties:
+        recipe_id: { type: string }
+        recipe_name: { type: string }
+        description: { type: string }
+        owner_id: { type: [string, 'null'] }
+        plugin_names: { type: array, items: { type: string } }
+        skip_required_plugins: { type: boolean }
+        skip_core: { type: boolean }
+        preload_store: { type: boolean }
+        custom_wiki: { type: [string, 'null'] }
+        recipe_bags: { type: array, items: { $ref: '#/components/schemas/RecipeBag' } }
+        acl: { type: array, items: { $ref: '#/components/schemas/ACLEntry' } }
+    RecipeBag:
+      type: object
+      properties:
+        bag_id: { type: string }
+        bag_name: { type: string }
+        position: { type: integer }
+        with_acl: { type: boolean }
+    Session:
+      type: object
+      properties:
+        session_id: { type: string }
+        user_id: { type: string }
+
+    # ── Auth bodies ──
+    Login1Request:
+      type: object
+      required: [username, startLoginRequest]
+      properties:
+        username: { type: string }
+        startLoginRequest: { type: string, description: OPAQUE client start-login message. }
+    Login1Response:
+      type: object
+      properties:
+        loginResponse: { type: string, description: OPAQUE server login response. }
+        loginSession: { type: string, description: Opaque token to echo back in step 2. }
+    Login2Request:
+      type: object
+      required: [finishLoginRequest, loginSession]
+      properties:
+        finishLoginRequest: { type: string }
+        loginSession: { type: string }
+        skipCookie: { type: boolean, default: false }
+    Login2Response:
+      type: object
+      properties:
+        user_id: { type: string }
+        session_id: { type: string }
+    LogoutRequest:
+      type: [object, 'null']
+      properties:
+        session_id: { type: string }
+        signature: { type: string }
+        skipCookie: { type: boolean, enum: [true] }
+
+    # ── Admin request bodies ──
+    AdminEmptyBody:
+      description: No body (used by `index_json`, `user_list`, `settings_read`).
+      type: 'null'
+    UserEditDataRequest:
+      type: object
+      required: [user_id]
+      properties: { user_id: { type: string } }
+    UserCreateRequest:
+      type: object
+      required: [username, email, role_ids]
+      properties:
+        username: { type: string }
+        email: { type: string }
+        role_ids: { type: array, items: { type: string } }
+    UserUpdateRequest:
+      type: object
+      required: [user_id, username, email, role_ids]
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        email: { type: string }
+        role_ids: { type: array, items: { type: string } }
+    UserDeleteRequest:
+      type: object
+      required: [user_id]
+      properties: { user_id: { type: string } }
+    UserUpdatePasswordRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string }
+        registrationRequest: { type: string }
+        registrationRecord: { type: string }
+        session_id: { type: string }
+        signature: { type: string }
+    UserGenerateTempPasswordRequest:
+      type: object
+      required: [user_id]
+      properties: { user_id: { type: string } }
+    RoleCreateRequest:
+      type: object
+      required: [role_name, description]
+      properties:
+        role_name: { type: string }
+        description: { type: string }
+    RoleUpdateRequest:
+      type: object
+      required: [role_id, role_name, description]
+      properties:
+        role_id: { type: string }
+        role_name: { type: string }
+        description: { type: string }
+    RecipeCreateOrUpdateRequest:
+      type: object
+      required: [recipe_name, description, bag_names, plugin_names, skip_required_plugins, skip_core, preload_store, custom_wiki, create_only]
+      properties:
+        recipe_name: { type: string }
+        description: { type: string }
+        bag_names:
+          type: array
+          items:
+            type: object
+            required: [bag_name, with_acl]
+            properties:
+              bag_name: { type: string }
+              with_acl: { type: boolean }
+        plugin_names: { type: array, items: { type: string } }
+        owner_id: { type: [string, 'null'] }
+        skip_required_plugins: { type: boolean }
+        skip_core: { type: boolean }
+        preload_store: { type: boolean }
+        custom_wiki: { type: [string, 'null'] }
+        create_only: { type: boolean }
+    RecipeDeleteRequest:
+      type: object
+      required: [recipe_name]
+      properties: { recipe_name: { type: string } }
+    BagCreateOrUpdateRequest:
+      type: object
+      required: [bag_name, description, create_only]
+      properties:
+        bag_name: { type: string }
+        description: { type: string }
+        owner_id: { type: [string, 'null'] }
+        create_only: { type: boolean }
+    BagDeleteRequest:
+      type: object
+      required: [bag_name]
+      properties: { bag_name: { type: string } }
+    AclUpdateRequest:
+      description: Body for `recipe_acl_update` (with `recipe_name`) and `bag_acl_update` (with `bag_name`).
+      type: object
+      required: [acl]
+      properties:
+        recipe_name: { type: string }
+        bag_name: { type: string }
+        acl: { type: array, items: { $ref: '#/components/schemas/ACLEntry' } }
+    SettingsUpdateRequest:
+      type: object
+      required: [key, value]
+      properties:
+        key: { type: string }
+        value: { type: string }
+
+    # ── Admin response bodies ──
+    CreatedUser:
+      type: object
+      properties:
+        user_id: { type: string }
+        created_at: { type: string, format: date-time }
+    UserEditData:
+      type: object
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        allRoles: { type: array, items: { $ref: '#/components/schemas/Role' } }
+    TempPasswordResponse:
+      type: object
+      properties:
+        temporaryPassword: { type: string }
+    SettingItem:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: [string, 'null'] }
+      additionalProperties: true
+    SuccessFlag:
+      type: object
+      properties:
+        success: { type: boolean }
+    IndexJson:
+      type: object
+      description: Initial admin/data payload (bags, recipes, plugins, current user) from `index_json`.
+      properties:
+        bagList: { type: array, items: { $ref: '#/components/schemas/Bag' } }
+        recipeList: { type: array, items: { $ref: '#/components/schemas/Recipe' } }
+        clientPlugins: { type: array, items: { type: string } }
+        corePlugins: { type: array, items: { type: string } }
+      additionalProperties: true
+
+    # ── Wiki bodies ──
+    SaveResult:
+      type: object
+      properties:
+        bag_name: { type: string }
+        revision_id: { type: string }
+    DeleteResult:
+      type: object
+      properties:
+        bag_id: { type: string }
+        bag_name: { type: string }
+        revision_id: { type: string }
+    RecipeStatus:
+      type: object
+      properties:
+        isAdmin: { type: boolean }
+        user_id: { type: string }
+        username: { type: string }
+        isLoggedIn: { type: boolean }
+        isReadOnly: { type: boolean }
+    UserStatus:
+      description: Login status from `GET /user/status` — either signed-out or a full identity.
+      oneOf:
+        - type: object
+          required: [isLoggedIn]
+          properties:
+            isLoggedIn: { type: boolean, enum: [false] }
+        - type: object
+          properties:
+            isAdmin: { type: boolean }
+            user_id: { type: string }
+            username: { type: string }
+            isLoggedIn: { type: boolean }
+            roles:
+              type: array
+              items:
+                type: object
+                properties:
+                  role_id: { type: string }
+                  role_name: { type: string }
+            serverTime: { type: integer }
+            avatarUrl: { type: string }
+    BagState:
+      type: object
+      properties:
+        bag_id: { type: string }
+        bag_name: { type: string }
+        position: { type: integer }
+        tiddlers:
+          type: array
+          items:
+            type: object
+            properties:
+              title: { type: string }
+              revision_id: { type: string }
+              is_deleted: { type: boolean }
+    RpcTitlesBody:
+      type: object
+      required: [titles]
+      properties:
+        titles: { type: array, items: { type: string } }
+    RpcTiddlersBody:
+      type: object
+      required: [tiddlers]
+      properties:
+        tiddlers:
+          type: array
+          items: { type: object, additionalProperties: { type: string } }
