@@ -68,7 +68,14 @@ export const registerZodRoutes = (parent: ServerRoute, router: any, keys: string
         }
       }
 
-      return state.sendJSON(200, res);
+      // Ported from upstream 05b7b3c: a handler returning undefined sends 204 (no body)
+      // instead of 200 with a null body, so clients can do
+      // `res.status === 204 ? undefined : await res.json()`.
+      if (res === undefined) {
+        return state.sendEmpty(204, { "content-type": "application/json" });
+      } else {
+        return state.sendJSON(200, res);
+      }
     });
   });
 }
