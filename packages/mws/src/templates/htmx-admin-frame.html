@@ -92,6 +92,12 @@
   </div>
 
   <script>
+    // Wrapped in an IIFE so the frame's top-level declarations (pathPrefix, etc.) do
+    // not collide with an injected page fragment's globals. A duplicate top-level
+    // `const pathPrefix` in the Users page aborted this entire script with a
+    // "already declared" SyntaxError, leaving the navbar dropdown and sidebar toggle
+    // unbound on that page.
+    (() => {
     const pathPrefix = '{{pathPrefix}}';
 
     // Toast functions
@@ -199,6 +205,7 @@
         console.error('Failed to load version info:', error);
       }
     });
+    })();
   </script>
 </body>
 </html>
