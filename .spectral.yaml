@@ -1,0 +1,36 @@
+# Spectral ruleset for the MWS OpenAPI document.
+#
+#   npx spectral lint openapi.yaml
+#
+# Extends the built-in OpenAPI (oas) ruleset for spec validity plus the OWASP
+# API Security Top 10 ruleset for security-guideline checks. The OWASP ruleset
+# is the loadable companion to the guidance at
+# https://apistylebook.stoplight.io/docs/owasp-top-10.
+extends:
+  - "spectral:oas"
+  - "@stoplight/spectral-owasp-ruleset"
+
+# The coverage skill lints with `--fail-severity=error`: the spec must be structurally
+# valid (spectral:oas) and free of OWASP *error*-level findings. The OWASP rules below are
+# down-ranked to `warning` because they conflict with this service's deliberate design —
+# they remain visible in `spectral lint` output (so the OWASP guidance is still "checked"),
+# but they do not block, since satisfying them would misrepresent the API:
+#
+#   * api4 (Unrestricted Resource Consumption): would require an artificial maxLength on
+#     every free-form string (tiddler titles/fields, ids), maxItems on every list, and
+#     int32/min/max on every integer — bounds this internal sync API does not impose.
+#   * api2 write-restricted: the OPAQUE login steps and the embedded TiddlyWiki docs mount
+#     are intentionally unauthenticated (no session exists yet / public docs).
+#   * api8 define-cors-origin: this is a same-origin service guarded by X-Requested-With +
+#     referer checks; it does not emit Access-Control-Allow-Origin on every response.
+rules:
+  owasp:api4:2023-string-limit: warn
+  owasp:api4:2023-array-limit: warn
+  owasp:api4:2023-integer-format: warn
+  owasp:api4:2023-integer-limit: warn
+  owasp:api4:2023-integer-limit-legacy: warn
+  owasp:api4:2023-rate-limit: warn
+  owasp:api4:2023-rate-limit-responses-429: warn
+  owasp:api4:2023-rate-limit-retry-after: warn
+  owasp:api2:2023-write-restricted: warn
+  owasp:api8:2023-define-cors-origin: warn
