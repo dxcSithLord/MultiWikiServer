@@ -268,11 +268,14 @@ export class HtmxAdminManager {
           `, "utf-8"));
         }
 
-        // Redirect to the user's own profile in the user management interface
+        // Redirect to the user's own entry on the USERS page, which reads ?editUser=
+        // and auto-opens the edit modal (where "Generate Temporary Password" lives).
+        // (Must target /admin-htmx/users — /admin-htmx is the Recipes page and ignores
+        // editUser, so it just looked like Profile bounced to the home page.)
         const user_id = state.user?.user_id || "";
 
         return state.sendBuffer(302, {
-          "location": `${state.pathPrefix}/admin-htmx?editUser=${encodeURIComponent(user_id)}`,
+          "location": `${state.pathPrefix}/admin-htmx/users?editUser=${encodeURIComponent(user_id)}`,
         }, Buffer.from("Redirecting to profile...", "utf-8"));
       }
     );

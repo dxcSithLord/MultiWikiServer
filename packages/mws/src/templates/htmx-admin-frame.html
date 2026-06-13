@@ -113,6 +113,11 @@
       const menuToggleBtn = document.getElementById('menu-toggle-btn');
       const sidebar = document.getElementById('sidebar');
       if (menuToggleBtn && sidebar) {
+        // On phones the sidebar is a full-width accordion; start it collapsed so the
+        // task content gets the full screen. The ☰ button toggles it open.
+        if (window.matchMedia('(max-width: 768px)').matches) {
+          sidebar.classList.add('mws-collapsed');
+        }
         menuToggleBtn.addEventListener('click', () => {
           sidebar.classList.toggle('mws-collapsed');
         });

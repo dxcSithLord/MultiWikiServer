@@ -425,6 +425,11 @@ body {
   overflow-x: auto;
 }
 
+/* Clickable user rows — the Actions column can be clipped on narrow screens, so the
+   whole row opens the user (handler in htmx-admin-poc.html). */
+#users-tbody tr { cursor: pointer; }
+#users-tbody tr:hover { background: #f5f5f5; }
+
 /* Responsive */
 @media (max-width: 768px) {
   .mws-admin-navbar {
@@ -435,7 +440,19 @@ body {
 
   .mws-admin-nav-right {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-end;
+  }
+
+  /* Keep the user dropdown inside the viewport (it is right-anchored; on a narrow
+     screen a left-positioned button would push it off the left edge). */
+  .mws-dropdown-menu {
+    right: 0.5rem;
+    left: auto;
+    max-width: calc(100vw - 1rem);
+  }
+
+  .mws-dropdown-item {
+    padding: 14px 16px;  /* larger touch target */
   }
 
   .mws-admin-container {
@@ -454,6 +471,9 @@ body {
 
   .mws-admin-table {
     font-size: 0.875rem;
+    /* Don't crush columns to fit; keep cells on one line so the content area
+       (overflow-x: auto) scrolls horizontally instead of squashing the table. */
+    white-space: nowrap;
   }
 
   .mws-admin-table th,
@@ -461,15 +481,34 @@ body {
     padding: 0.5rem;
   }
 
+  /* Stack the layout and turn the sidebar into a full-width accordion that is
+     collapsed by default on mobile (see the frame's collapse-on-load script), so
+     the content area gets the full screen width instead of a cramped 200px split. */
+  .mws-admin-layout {
+    flex-direction: column;
+  }
+
   .mws-admin-sidebar {
-    width: 200px;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+    transition: none;
   }
 
   .mws-admin-sidebar.mws-collapsed {
-    margin-left: -200px;
+    width: 100%;
+    margin-left: 0;
+    height: 0;
+    overflow: hidden;
+    border-bottom: 0;
+  }
+
+  .mws-sidebar-item {
+    padding: 0.9rem 1.25rem;  /* larger touch target */
   }
 
   .mws-admin-content {
     padding: 1rem;
+    width: 100%;
   }
 }
