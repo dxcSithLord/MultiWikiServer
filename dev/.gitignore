@@ -1,3 +1,5 @@
 *
 !.gitignore
 !localhost_certs.sh
+!hooks
+!hooks/**

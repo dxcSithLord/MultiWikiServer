@@ -90,3 +90,23 @@ listen.router.init: 4.002ms
 cli.execute.after
 cli.execute.after: 0.015ms
 ```
+
+## Pre-push CI hook (opt-in)
+
+A fail-fast `pre-push` hook lives in `dev/hooks/`. It is **not** enabled by
+default. To enable it locally (after reviewing it), point git at the hooks
+directory:
+
+```sh
+git config core.hooksPath dev/hooks
+```
+
+To disable it again, run `git config --unset core.hooksPath`.
+
+Once enabled, every `git push` runs, stopping at the first failure: `npm run
+build`, `npm run test:unit`, the `mws-cutover-check` and `openapi-coverage`
+skills, `npm audit --omit=dev --audit-level=high`, and a headless admin smoke
+test (`dev/hooks/smoke-admin.cjs`). Set `SKIP_SMOKE=1` to skip the smoke test
+(e.g. on hosts without Chromium). The smoke test boots the built server against
+a fresh, isolated store on an ephemeral loopback port — it never touches
+`dev/wiki/store` or port 8080.

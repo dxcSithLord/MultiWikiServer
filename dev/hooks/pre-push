@@ -1,0 +1,48 @@
+#!/usr/bin/env sh
+#
+# pre-push — fail-fast CI gate for the MWS fork.
+#
+# NOT auto-enabled. To enable (after review):
+#     git config core.hooksPath dev/hooks
+# To disable again:
+#     git config --unset core.hooksPath
+#
+# Runs, in order and stopping at the first failure:
+#   1. npm run build        — the server must compile.
+#   2. npm run test:unit    — the vitest unit suite must pass.
+#   3. mws-cutover-check    — React->HTMX cutover must stay complete (no regression).
+#   4. openapi-coverage     — openapi.yaml must be valid AND cover every route.
+#   5. npm audit (prod)     — no high/critical advisories in production deps.
+#   6. headless admin smoke — admin UI nav + Users table must work in a real browser.
+#
+# Set SKIP_SMOKE=1 to skip step 6 (e.g. when Chromium is unavailable on the host).
+# Keep this pre-push-fast: each step is a guard, not an exhaustive test run.
+set -e
+
+# Run from the repo root regardless of where git invokes us.
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT"
+
+echo ">> [1/6] Guarding: the server compiles (npm run build)"
+npm run build
+
+echo ">> [2/6] Guarding: unit suite passes (npm run test:unit)"
+npm run test:unit
+
+echo ">> [3/6] Guarding: React->HTMX cutover stays complete (mws-cutover-check)"
+bash .claude/skills/mws-cutover-check/check.sh
+
+echo ">> [4/6] Guarding: openapi.yaml is valid and covers every route (openapi-coverage)"
+bash .claude/skills/openapi-coverage/check.sh
+
+echo ">> [5/6] Guarding: no high/critical advisories in production deps (npm audit)"
+npm audit --omit=dev --audit-level=high
+
+if [ "${SKIP_SMOKE:-0}" = "1" ]; then
+  echo ">> [6/6] SKIPPED headless admin smoke (SKIP_SMOKE=1)"
+else
+  echo ">> [6/6] Guarding: admin UI nav + Users table work in a real browser (headless smoke)"
+  node dev/hooks/smoke-admin.cjs
+fi
+
+echo ">> pre-push checks passed."
