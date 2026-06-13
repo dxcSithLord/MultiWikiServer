@@ -2,7 +2,7 @@ import * as http2 from 'node:http2';
 import send, { SendOptions } from 'send';
 import { Readable } from 'stream';
 import { IncomingMessage, ServerResponse, IncomingHttpHeaders as NodeIncomingHeaders, OutgoingHttpHeaders } from 'node:http';
-import { is } from './utils';
+import { caughtPromise, is } from './utils';
 import { SendError } from './SendError';
 import { createReadStream } from 'node:fs';
 import { Writable } from 'node:stream';
@@ -330,19 +330,23 @@ export class Streamer {
     });
     return new Promise<typeof STREAM_ENDED>((resolve, reject) => {
 
-      sender.on("error", (err) => Promise.resolve().then(async (): Promise<typeof STREAM_ENDED> => {
+      // Ported from upstream 9aaf50f: send the error response (which ends res and
+      // resolves via the res "end" handler below) instead of throwing sendEmpty's
+      // STREAM_ENDED return into reject; real handler rejections route to reject.
+      sender.on("error", caughtPromise(async (err: any) => {
         if (err === 404 || err?.statusCode === 404) {
-          return (await on404?.()) ?? this.sendEmpty(404);
+          if (on404) on404();
+          else this.sendEmpty(404);
         } else {
           console.log(err);
-          throw this.sendEmpty(500);
+          this.sendEmpty(500);
         }
-      }).then(resolve, reject));
+      }, reject));
 
-      sender.on("directory", () => Promise.resolve().then(async (): Promise<typeof STREAM_ENDED> => {
-        return (await onDir?.())
-          ?? this.sendEmpty(404, { "x-reason": "Directory listing not allowed" })
-      }).then(resolve, reject));
+      sender.on("directory", caughtPromise(async () => {
+        if (onDir) onDir();
+        else this.sendEmpty(404, { "x-reason": "Directory listing not allowed" });
+      }, reject));
 
       sender.on("stream", (fileStream) => {
         this.compressor.beforeWriteHead();

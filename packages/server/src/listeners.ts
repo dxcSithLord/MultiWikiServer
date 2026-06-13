@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { ok } from "node:assert";
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
-import { createSecureServer, Http2SecureServer, Http2ServerRequest, Http2ServerResponse } from "node:http2";
+import { createSecureServer, Http2SecureServer, Http2ServerRequest, Http2ServerResponse, Http2Session } from "node:http2";
 import { Router } from "./router";
 import { serverEvents } from '@tiddlywiki/events';
 
@@ -78,7 +78,13 @@ export class ListenerHTTPS extends ListenerBase {
     ok(config.cert && existsSync(config.cert), "Cert file not found at " + config.cert);
     const key = readFileSync(config.key), cert = readFileSync(config.cert);
     super(createSecureServer({ key, cert, allowHTTP1: true, }), router, bindInfo, config);
-
+    // Ported from upstream 9aaf50f: close live HTTP/2 sessions on server exit so
+    // the process can shut down cleanly instead of hanging on open sessions.
+    this.server.on("session", (session: Http2Session) => {
+      const closeSession = () => { session.close(); };
+      serverEvents.on("exit", closeSession);
+      session.on("close", () => { serverEvents.off("exit", closeSession); });
+    });
   }
 
 }
