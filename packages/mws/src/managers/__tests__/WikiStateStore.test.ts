@@ -9,7 +9,8 @@
  * - CSP header functionality (Phase 3)
  */
 
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+const mock = vi.fn;
 import { Readable } from "stream";
 
 // Mock BufferedWriter for isolated testing

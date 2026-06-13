@@ -52,6 +52,8 @@
     "dev:init-store": "rm -rf dev/wiki/store && DEBUG= npm start init-store",
     "env": "env",
     "test": "node scripts.mjs test",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
     "prisma:generate": "node scripts.mjs prisma:generate",
     "prisma:migrate": "node scripts.mjs prisma:migrate"
   },

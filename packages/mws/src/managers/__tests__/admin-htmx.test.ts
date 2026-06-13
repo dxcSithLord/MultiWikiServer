@@ -10,7 +10,8 @@
  * - Session handling
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+const mock = vi.fn;
 import { ServerRequest, ServerRoute } from "@tiddlywiki/server";
 import { serverEvents } from "@tiddlywiki/events";
 import { HtmxAdminManager } from "../admin-htmx";
