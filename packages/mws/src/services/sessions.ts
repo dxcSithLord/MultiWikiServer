@@ -91,6 +91,49 @@ export class SessionManager {
     registerZodRoutes(root, new SessionManager(), Object.keys(SessionKeyMap))
   }
 
+  // ── Login rate limiting ──────────────────────────────────────────────────
+  // In-memory, per-username throttle on /login/1 (resets on process restart; mirrors the
+  // passwordGenerationCooldowns pattern). Keyed by USERNAME deliberately: behind a TLS proxy
+  // (Tailscale Serve) the client IP is always the loopback proxy, so per-IP limiting is not
+  // meaningful here. With OPAQUE a wrong password fails client-side, so the server-side signal
+  // of an attempt is the /login/1 start — that is what we count. Tradeoff: a username-keyed
+  // lockout can be used to temporarily lock a victim out (acceptable on a tailnet-only deploy).
+  private static loginAttempts = new Map<string, { times: number[]; lockedUntil: number }>();
+  static readonly LOGIN_WINDOW_MS = 15 * 60_000;   // sliding window
+  static readonly LOGIN_MAX_ATTEMPTS = 10;         // starts allowed per window
+  static readonly LOGIN_LOCKOUT_MS = 15 * 60_000;  // lock duration once exceeded
+
+  /** Throws a user-facing string if the username is locked out or exceeds the attempt cap. */
+  static checkLoginRateLimit(username: string, now: number = Date.now()): void {
+    const rec = SessionManager.loginAttempts.get(username) ?? { times: [], lockedUntil: 0 };
+
+    if (rec.lockedUntil > now) {
+      const mins = Math.ceil((rec.lockedUntil - now) / 60_000);
+      throw `Too many login attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
+    }
+
+    rec.times = rec.times.filter(t => now - t < SessionManager.LOGIN_WINDOW_MS);
+    rec.times.push(now);
+
+    if (rec.times.length > SessionManager.LOGIN_MAX_ATTEMPTS) {
+      rec.lockedUntil = now + SessionManager.LOGIN_LOCKOUT_MS;
+      rec.times = [];
+      SessionManager.loginAttempts.set(username, rec);
+      throw `Too many login attempts. Try again in ${Math.ceil(SessionManager.LOGIN_LOCKOUT_MS / 60_000)} minutes.`;
+    }
+
+    SessionManager.loginAttempts.set(username, rec);
+
+    // Opportunistic cleanup so the map can't grow unbounded.
+    if (SessionManager.loginAttempts.size > 1000) {
+      for (const [k, v] of SessionManager.loginAttempts) {
+        const last = v.times[v.times.length - 1] ?? 0;
+        if (v.lockedUntil < now && now - last > SessionManager.LOGIN_WINDOW_MS)
+          SessionManager.loginAttempts.delete(k);
+      }
+    }
+  }
+
   static async parseIncomingRequest(streamer: Streamer, config: ServerState): Promise<AuthUser> {
 
     const sessionId = streamer.cookies.getAll("session") as PrismaField<"Sessions", "session_id">[];
@@ -128,6 +171,9 @@ export class SessionManager {
     startLoginRequest: z.string(),
   }), async (state, prisma) => {
     const { username, startLoginRequest } = state.data;
+
+    // Throttle repeated login starts per username (brute-force / credential-stuffing).
+    SessionManager.checkLoginRateLimit(username);
 
     const user = await prisma.users.findUnique({
       where: { username },
