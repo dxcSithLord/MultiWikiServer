@@ -19,6 +19,9 @@
           Create New User
         </button>
       </div>
+      <!-- Scroll wrapper: the card clips overflow, so without this the right-hand
+           columns (Status, Actions) are hidden on narrow screens. -->
+      <div class="mws-table-scroll" style="overflow-x:auto;">
       <table id="users-table" class="mws-admin-table">
         <thead>
           <tr>
@@ -40,6 +43,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -83,6 +87,17 @@
             </button>
             <small class="mws-text-muted" style="display:block;margin-top:0.5rem;">
               Generates a random password that will be shown once
+            </small>
+          </div>
+
+          <div class="mws-form-group" id="status-section" style="display:none;">
+            <label>Account Status</label>
+            <div>
+              <span id="status-indicator"></span>
+              <button type="button" class="mws-btn mws-btn-sm" id="modal-lock-btn" style="margin-left:0.5rem;"></button>
+            </div>
+            <small class="mws-text-muted" style="display:block;margin-top:0.5rem;">
+              A locked (disabled) account cannot log in and its active sessions end immediately.
             </small>
           </div>
 
@@ -261,6 +276,7 @@
       document.getElementById('user_id').value = '';
       populateRoles([]);
       document.getElementById('password-section').style.display = 'none';
+      document.getElementById('status-section').style.display = 'none';
       document.getElementById('userModal').classList.add('mws-show');
     }
 
@@ -281,6 +297,20 @@
 
         // Show password section for editing
         document.getElementById('password-section').style.display = 'block';
+
+        // Account status / lock toggle — reachable here even when the table's Actions
+        // column is clipped. Hidden on your own account (self-lock is blocked).
+        const statusSection = document.getElementById('status-section');
+        if (data.user.user_id === currentUserId) {
+          statusSection.style.display = 'none';
+        } else {
+          statusSection.style.display = 'block';
+          document.getElementById('status-indicator').textContent = data.user.disabled ? 'Disabled' : 'Active';
+          const lockBtn = document.getElementById('modal-lock-btn');
+          lockBtn.textContent = data.user.disabled ? 'Unlock account' : 'Lock account';
+          lockBtn.dataset.userId = data.user.user_id;
+          lockBtn.dataset.disabled = data.user.disabled ? '1' : '0';
+        }
 
         document.getElementById('userModal').classList.add('mws-show');
       } catch (error) {
@@ -487,6 +517,17 @@
       const generateTempPasswordBtn = document.getElementById('generate-temp-password-btn');
       if (generateTempPasswordBtn) {
         generateTempPasswordBtn.addEventListener('click', generateTempPassword);
+      }
+
+      // Lock/Unlock button inside the edit modal
+      const modalLockBtn = document.getElementById('modal-lock-btn');
+      if (modalLockBtn) {
+        modalLockBtn.addEventListener('click', () => {
+          const userId = modalLockBtn.dataset.userId;
+          if (!userId) return;
+          closeModal();
+          toggleDisabled(userId, modalLockBtn.dataset.disabled === '1');
+        });
       }
 
       // Copy temporary password button
