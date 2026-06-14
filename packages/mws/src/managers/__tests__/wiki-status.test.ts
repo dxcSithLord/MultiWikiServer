@@ -306,65 +306,84 @@ describe("Wiki Status SSE - Phase 1 Event Handler Cleanup", () => {
     });
 
     it("should check closed flag in sendEvent", async () => {
-      let closed = false;
-      const sentEvents: number[] = [];
+      // Fake timers: deterministically order "close" before the in-flight
+      // send's timer fires. With real timers a 5ms wait racing a 10ms timer
+      // inverts under full-suite load, intermittently pushing id=1. See the
+      // post-await guard below — that is the behaviour under test.
+      vi.useFakeTimers();
+      try {
+        let closed = false;
+        const sentEvents: number[] = [];
 
-      async function sendEvent(id: number) {
-        if (closed) return; // Guard
+        async function sendEvent(id: number) {
+          if (closed) return; // Guard
 
-        // Simulate async work
-        await new Promise(resolve => setTimeout(resolve, 10));
+          // Simulate async work
+          await new Promise(resolve => setTimeout(resolve, 10));
 
-        if (closed) return; // Double-check after async
+          if (closed) return; // Double-check after async
 
-        sentEvents.push(id);
+          sentEvents.push(id);
+        }
+
+        // Start sending (parks on the 10ms timer, past the entry guard)
+        const promise1 = sendEvent(1);
+
+        // Close before the in-flight send's timer fires
+        closed = true;
+
+        // Advance past the timer; the post-await guard suppresses the push
+        await vi.advanceTimersByTimeAsync(10);
+        await promise1;
+
+        // A send started after close returns at the entry guard
+        await sendEvent(2);
+
+        expect(sentEvents.length).toBe(0);
+      } finally {
+        vi.useRealTimers();
       }
-
-      // Start sending
-      const promise1 = sendEvent(1);
-
-      // Close before completion
-      await new Promise(resolve => setTimeout(resolve, 5));
-      closed = true;
-
-      await promise1;
-
-      // Try to send more
-      await sendEvent(2);
-
-      expect(sentEvents.length).toBe(0);
     });
 
     it("should handle hasBag check with closed guard", async () => {
-      let closed = false;
-      const checkedBags: string[] = [];
+      // Fake timers for the same reason as the sendEvent test: order "close"
+      // deterministically before the simulated db check resolves, instead of
+      // relying on a 5ms wait beating a 10ms timer under load.
+      vi.useFakeTimers();
+      try {
+        let closed = false;
+        const checkedBags: string[] = [];
 
-      async function onEvent(data: { bag_name: string }) {
-        if (closed) return; // Guard at entry
+        async function onEvent(data: { bag_name: string }) {
+          if (closed) return; // Guard at entry
 
-        // Simulate database check
-        const hasBag = await simulateDbCheck(data.bag_name);
+          // Simulate database check
+          const hasBag = await simulateDbCheck(data.bag_name);
 
-        if (hasBag && !closed) { // Double-check not closed
-          checkedBags.push(data.bag_name);
+          if (hasBag && !closed) { // Double-check not closed
+            checkedBags.push(data.bag_name);
+          }
         }
+
+        async function simulateDbCheck(bagName: string): Promise<boolean> {
+          await new Promise(resolve => setTimeout(resolve, 10));
+          return true;
+        }
+
+        // Start processing (parks on the 10ms db-check timer)
+        const promise = onEvent({ bag_name: "bag-1" });
+
+        // Close during processing
+        closed = true;
+
+        // Advance past the db check; the !closed guard suppresses the push
+        await vi.advanceTimersByTimeAsync(10);
+        await promise;
+
+        expect(checkedBags.length).toBe(0);
+      } finally {
+        vi.useRealTimers();
       }
-
-      async function simulateDbCheck(bagName: string): Promise<boolean> {
-        await new Promise(resolve => setTimeout(resolve, 10));
-        return true;
-      }
-
-      // Start processing
-      const promise = onEvent({ bag_name: "bag-1" });
-
-      // Close during processing
-      await new Promise(resolve => setTimeout(resolve, 5));
-      closed = true;
-
-      await promise;
-
-      expect(checkedBags.length).toBe(0);
     });
 
     it("should prevent multiple cleanup calls", () => {
