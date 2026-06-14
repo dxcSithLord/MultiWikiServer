@@ -41,4 +41,13 @@ describe("SessionManager.checkLoginRateLimit", () => {
       expect(() => SessionManager.checkLoginRateLimit(u, t)).not.toThrow();
     }
   });
+
+  it("stays bounded under a spray of distinct fresh usernames", () => {
+    // All within one window, so the staleness check can't reclaim them — the hard cap must.
+    const cap = SessionManager.LOGIN_MAX_TRACKED;
+    for (let i = 0; i < cap + 1000; i++) {
+      SessionManager.checkLoginRateLimit("spray-" + i, 1_000 + i);
+    }
+    expect(SessionManager.loginTrackedCount).toBeLessThanOrEqual(cap);
+  });
 });

@@ -102,6 +102,10 @@ export class SessionManager {
   static readonly LOGIN_WINDOW_MS = 15 * 60_000;   // sliding window
   static readonly LOGIN_MAX_ATTEMPTS = 10;         // starts allowed per window
   static readonly LOGIN_LOCKOUT_MS = 15 * 60_000;  // lock duration once exceeded
+  static readonly LOGIN_MAX_TRACKED = 5000;        // hard cap on tracked usernames (anti-spray)
+
+  /** Number of currently-tracked usernames (exposed for tests / diagnostics). */
+  static get loginTrackedCount(): number { return SessionManager.loginAttempts.size; }
 
   /** Throws a user-facing string if the username is locked out or exceeds the attempt cap. */
   static checkLoginRateLimit(username: string, now: number = Date.now()): void {
@@ -118,19 +122,35 @@ export class SessionManager {
     if (rec.times.length > SessionManager.LOGIN_MAX_ATTEMPTS) {
       rec.lockedUntil = now + SessionManager.LOGIN_LOCKOUT_MS;
       rec.times = [];
-      SessionManager.loginAttempts.set(username, rec);
+      SessionManager.storeAttempt(username, rec, now);
       throw `Too many login attempts. Try again in ${Math.ceil(SessionManager.LOGIN_LOCKOUT_MS / 60_000)} minutes.`;
     }
 
+    SessionManager.storeAttempt(username, rec, now);
+  }
+
+  /**
+   * Store an attempt record and keep the map bounded. The Map's insertion order is used as an
+   * LRU (re-inserting moves a key to the end), so the freshly-touched username is never the one
+   * evicted. Beyond the hard cap we drop stale entries first, then LRU-evict the oldest — this
+   * bounds memory/CPU under a username-spray attack (many distinct fresh usernames in-window,
+   * which the staleness check alone would never reclaim).
+   */
+  private static storeAttempt(username: string, rec: { times: number[]; lockedUntil: number }, now: number): void {
+    SessionManager.loginAttempts.delete(username);
     SessionManager.loginAttempts.set(username, rec);
 
-    // Opportunistic cleanup so the map can't grow unbounded.
-    if (SessionManager.loginAttempts.size > 1000) {
-      for (const [k, v] of SessionManager.loginAttempts) {
-        const last = v.times[v.times.length - 1] ?? 0;
-        if (v.lockedUntil < now && now - last > SessionManager.LOGIN_WINDOW_MS)
-          SessionManager.loginAttempts.delete(k);
-      }
+    if (SessionManager.loginAttempts.size <= SessionManager.LOGIN_MAX_TRACKED) return;
+
+    for (const [k, v] of SessionManager.loginAttempts) {
+      const last = v.times[v.times.length - 1] ?? 0;
+      if (v.lockedUntil < now && now - last > SessionManager.LOGIN_WINDOW_MS)
+        SessionManager.loginAttempts.delete(k);
+    }
+    while (SessionManager.loginAttempts.size > SessionManager.LOGIN_MAX_TRACKED) {
+      const oldest = SessionManager.loginAttempts.keys().next().value;
+      if (oldest === undefined) break;
+      SessionManager.loginAttempts.delete(oldest);
     }
   }
 
