@@ -1,0 +1,11 @@
+# CodeRabbit configuration.
+# The repository default branch is `main` (it tracks upstream TiddlyWiki/MultiWikiServer).
+# Active development for this fork happens on `Alternative-to-react`, and feature PRs target
+# it — so enable auto-review for that base branch (CodeRabbit otherwise only auto-reviews PRs
+# into the default branch). Add more base-branch patterns here if the workflow changes.
+language: en-US
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      - "Alternative-to-react"
