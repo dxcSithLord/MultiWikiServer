@@ -41,7 +41,10 @@ these are polish, not correctness):
 - [ ] Pin a Node version of record (`.nvmrc`); reconcile engines/CI/ARCHITECTURE mismatch.
 
 ## Family task app (see the `moving-house-app` repo)
-- [ ] Comments-as-discrete-tiddlers upgrade (current per-task notes tiddler is last-write-wins).
+- [x] Comments-as-discrete-tiddlers upgrade — DONE (in `moving-house-app`): each comment is its
+      own append-only `task-comment` tiddler (one MWS row each), replacing the single per-task
+      notes tiddler that was last-write-wins. Dashboard shows a collapsible thread + add form;
+      legacy notes shown read-only. Interactive create/sync still to be confirmed on the live Pi.
 - [x] Rotate the **live deployment's** admin credential (was first initialised under the old
       fixed `1234` default) — DONE: changed via the HTMX admin web page. New installs no longer
       use `1234` — `init-store` generates a unique random password (UK PSTI alignment; see
