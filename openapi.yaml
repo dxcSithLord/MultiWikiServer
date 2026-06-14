@@ -1015,7 +1015,7 @@ components:
         role_ids: { type: array, items: { type: string } }
     UserUpdateRequest:
       type: object
-      required: [user_id, username, email, role_ids]
+      required: [user_id, username, role_ids]
       properties:
         user_id: { type: string }
         username: { type: string }

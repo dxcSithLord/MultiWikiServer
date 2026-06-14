@@ -130,6 +130,7 @@
     const pathPrefix = '{{pathPrefix}}';
     let allRoles = [];
     let allUsers = [];
+    let currentUserId = null;
 
     // Utility: Make API request
     async function apiRequest(endpoint, data) {
@@ -215,7 +216,7 @@
           <td>
             <div class="mws-btn-group">
               <button class="mws-btn mws-btn-primary mws-btn-sm" data-action="edit" data-user-id="${escapeHtml(user.user_id)}">Edit</button>
-              <button class="mws-btn mws-btn-sm" data-action="toggle-disabled" data-user-id="${escapeHtml(user.user_id)}" data-disabled="${user.disabled ? '1' : '0'}">${user.disabled ? 'Unlock' : 'Lock'}</button>
+              ${user.user_id !== currentUserId ? `<button class="mws-btn mws-btn-sm" data-action="toggle-disabled" data-user-id="${escapeHtml(user.user_id)}" data-disabled="${user.disabled ? '1' : '0'}">${user.disabled ? 'Unlock' : 'Lock'}</button>` : ''}
               <button class="mws-btn mws-btn-danger mws-btn-sm" data-action="delete" data-user-id="${escapeHtml(user.user_id)}" data-username="${escapeHtml(user.username)}">Delete</button>
             </div>
           </td>
@@ -229,6 +230,7 @@
         // Get roles and other data from index endpoint
         const data = await apiRequest('index_json', undefined);
         allRoles = data.roleList || [];
+        currentUserId = data.user_id || null;
 
         // Update version info in dropdown
         if (data.versions) {
