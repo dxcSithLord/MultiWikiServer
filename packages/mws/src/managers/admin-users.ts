@@ -217,7 +217,10 @@ export class UserManager {
     if (state.user.user_id === user_id && disabled)
       throw "You cannot disable your own account";
 
-    await prisma.users.update({ where: { user_id }, data: { disabled } });
+    // updateMany returns a count instead of throwing an ORM error for a missing user,
+    // so we can surface a stable domain error.
+    const { count } = await prisma.users.updateMany({ where: { user_id }, data: { disabled } });
+    if (!count) throw "User not found";
     // Disabling immediately ends any active sessions for that user.
     if (disabled) await prisma.sessions.deleteMany({ where: { user_id } });
 

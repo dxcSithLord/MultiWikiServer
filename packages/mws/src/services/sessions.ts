@@ -172,6 +172,13 @@ export class SessionManager {
 
     if (!value?.session?.sessionKey) throw "Login failed.";
 
+    // Re-check the account here too: it may have been disabled between /login/1 and /login/2.
+    const account = await prisma.users.findUnique({
+      where: { user_id: value.user_id },
+      select: { disabled: true },
+    });
+    if (!account || account.disabled) throw "Account is disabled.";
+
     const session_id = await createSession(prisma, value.user_id, value.session.sessionKey);
 
     if (!skipCookie) {
