@@ -15,11 +15,24 @@ Outstanding items captured for later. Done items are recorded in the git history
 - [ ] Add auth/OPAQUE + cookie-Secure + logout tests; add wiki-sync HTTP round-trip tests.
 - [ ] Repair or delete the broken `test-htmx-admin.mjs`.
 - [ ] `vitest --coverage` baseline; reconcile the Bun-era test docs.
-- [ ] **Stabilise the flaky `wiki-status.test.ts` SSE test** — it intermittently fails under
-      full-suite load (e.g. `expect(sentEvents.length).toBe(0)`, a timing race), passing on
-      re-run. A flaky test in the blocking pre-push gate randomly blocks pushes — fix the timing
-      (deterministic fake timers / await the SSE flush) before relying on the gate.
+- [x] **Stabilise the flaky `wiki-status.test.ts` SSE test** — DONE (Alternative-to-react
+      `cbd4dc5`): the `sendEvent` + `hasBag` closed-guard tests relied on a real 5ms wait beating
+      a real 10ms timer (inverts under load); switched both to `vi.useFakeTimers()` +
+      `advanceTimersByTimeAsync`. Verified 40/40 isolated + 5/5 full `test:unit`.
 - [ ] Optional: a fork CI job mirroring the pre-push hook.
+
+## Pre-push gate / smoke (see `dev/hooks/smoke-admin.cjs`)
+Hardening notes from the smoke-admin review (the hook + smoke are sound and pass end-to-end;
+these are polish, not correctness):
+- [ ] Make the puppeteer-core path less fragile — it defaults to mermaid-cli's nested
+      `node_modules/puppeteer-core` (breaks if mermaid-cli moves); add it as a `devDependency`
+      (the `PUPPETEER_CORE_PATH` env override is the current escape hatch).
+- [ ] Tighten the favicon-404 filter — it currently ignores *any* `Failed to load resource: …404`,
+      which could mask a real missing asset (e.g. `styles.css`); scope it to the favicon only.
+- [ ] Speed up the gate — `init-store` re-imports the full doc editions every run (~minutes,
+      dominates pre-push time); cache or minimise the store init.
+- [ ] Surface login failure explicitly — the `waitForFunction(...).catch()` swallows a failed
+      login so it shows up as "no Users row found" rather than "login failed" (cosmetic).
 
 ## Security / standards (see SDP.md §6–8)
 - [ ] Decide FIPS-140-3 scope (recommend: documented non-goal for this deployment) — record it.
