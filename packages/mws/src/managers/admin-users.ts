@@ -166,12 +166,15 @@ export class UserManager {
   user_update = admin(z => z.object({
     user_id: z.prismaField("Users", "user_id", "string"),
     username: z.prismaField("Users", "username", "string"),
-    email: z.prismaField("Users", "email", "string"),
+    email: z.prismaField("Users", "email", "string").optional(),
     nickname: z.string().optional(),
     role_ids: z.prismaField("Roles", "role_id", "string").array(),
   }), async (state, prisma) => {
-    const { user_id, username, email, role_ids } = state.data;
+    const { user_id, username, role_ids } = state.data;
     const nickname = state.data.nickname?.trim() || null;
+    // Email is optional (matching user_create + the UI): a blank/omitted value leaves the
+    // existing email unchanged, rather than forcing one or clobbering it with a placeholder.
+    const email = state.data.email?.trim();
 
     state.okAdmin();
 
@@ -197,7 +200,7 @@ export class UserManager {
     try {
       await prisma.users.update({
         where: { user_id },
-        data: { username, email, nickname, roles: { set: role_ids.map(role_id => ({ role_id })) } }
+        data: { username, ...(email ? { email } : {}), nickname, roles: { set: role_ids.map(role_id => ({ role_id })) } }
       });
     } catch (error) {
       handlePrismaUniqueConstraintError(error);
