@@ -1,8 +1,8 @@
 # Software Development Plan — MWS fork (`Alternative-to-react`)
 
-> WIP / parking doc. Captures the decisions, tooling, dependencies, standards and gaps
-> for this fork so the documentation work can be finished later. Drawn from the branch
-> history (`git log 6e32c46..`) and the codebase as of `0dbae8f`.
+> Canonical Software Development Plan for this fork. Records the engineering decisions,
+> tooling, dependencies, standards and outstanding gaps. Drawn from the branch history
+> (`git log 6e32c46..`) and verified against the codebase as of `0dbae8f`.
 
 ## 1. Context & scope
 
@@ -81,7 +81,11 @@ puppeteer-core + chromium (headless tests), `tailscale serve`, tsup/esbuild, vit
 **packages/commander** deps: `commander 13.1.0`, `chalk ^5.4.1`.
 **packages/multipart-parser** (vendored, MIT) deps: `@remix-run/headers ^0.12.0`.
 events/utils/tiddlywiki-types: no runtime deps.
-> GAP: `create-package/files/package.json` and the generated prisma client not enumerated here.
+**packages/create-package** (`@tiddlywiki/create-mws`): no `dependencies` block; the scaffolded
+`files/package.json` (`@tiddlywiki/mws-instance`) likewise declares no deps — only a
+`start: "mws listen --listener"` script. The generated Prisma client (`prisma/client`,
+published as `@tiddlywiki/mws-prisma`) is a build artifact, not a hand-managed dependency, and
+is referenced from root deps as `prisma-client file:prisma/client`.
 
 ## 6. Standards
 
@@ -123,5 +127,6 @@ family app**; phases 0–1 are the no-regret first steps if it ever becomes requ
 - Data-retention / backup policy + password-master-key rotation — undocumented.
 - CI/CD for the fork — the existing GH workflow only builds the upstream site; the pre-push hook
   is the only gate (consider a fork CI job).
-- Node version of record — `engines >=18` vs ARCHITECTURE "20+" vs upstream CI "23"; no `.nvmrc`.
+- Node version of record — root `engines.node >=18` (the only `engines` field in the workspace;
+  no per-package or `create-package` constraint) vs ARCHITECTURE "20+" vs upstream CI "23"; no `.nvmrc`.
 - The 204-port latent contract caveat (client 204-handling) if a handler ever returns `undefined`.
