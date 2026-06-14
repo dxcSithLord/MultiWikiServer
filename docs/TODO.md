@@ -42,9 +42,10 @@ these are polish, not correctness):
 
 ## Family task app (see the `moving-house-app` repo)
 - [ ] Comments-as-discrete-tiddlers upgrade (current per-task notes tiddler is last-write-wins).
-- [ ] Rotate the **live deployment's** admin credential (it was first initialised under the old
-      fixed `1234` default) with `mws reset-password`. New installs no longer use `1234` —
-      `init-store` generates a unique random password (UK PSTI alignment; see `docs/security.md`).
+- [x] Rotate the **live deployment's** admin credential (was first initialised under the old
+      fixed `1234` default) — DONE: changed via the HTMX admin web page. New installs no longer
+      use `1234` — `init-store` generates a unique random password (UK PSTI alignment; see
+      `docs/security.md`).
 - [ ] Node-share the Pi to each family member's Tailscale account + hand out their household login.
 
 ## Upstream / maintenance (see SDP.md §2.10)
