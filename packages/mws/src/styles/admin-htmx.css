@@ -58,7 +58,10 @@ body {
 
 /* Container */
 .mws-admin-container {
-  max-width: 1200px;
+  /* Fluid (no fixed cap): fill the content area so collapsing the sidebar actually
+     widens the content. A fixed max-width + margin:auto turned the freed space into
+     side-margin, making wide tables look like they had nothing more to show. */
+  max-width: none;
   margin: 0 auto;
   padding: 0 15px;
 }
