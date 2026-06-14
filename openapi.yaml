@@ -198,6 +198,7 @@ paths:
               - user_edit_data
               - user_update_password
               - user_generate_temp_password
+              - user_set_disabled
               - role_create
               - role_update
               - recipe_create_or_update
@@ -224,6 +225,7 @@ paths:
                 - $ref: '#/components/schemas/UserDeleteRequest'
                 - $ref: '#/components/schemas/UserUpdatePasswordRequest'
                 - $ref: '#/components/schemas/UserGenerateTempPasswordRequest'
+                - $ref: '#/components/schemas/UserSetDisabledRequest'
                 - $ref: '#/components/schemas/RoleCreateRequest'
                 - $ref: '#/components/schemas/RoleUpdateRequest'
                 - $ref: '#/components/schemas/RecipeCreateOrUpdateRequest'
@@ -918,6 +920,8 @@ components:
         user_id: { type: string }
         username: { type: string }
         email: { type: string }
+        nickname: { type: [string, 'null'] }
+        disabled: { type: boolean }
         roles: { type: array, items: { $ref: '#/components/schemas/Role' } }
         last_login: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }
@@ -1003,10 +1007,11 @@ components:
       properties: { user_id: { type: string } }
     UserCreateRequest:
       type: object
-      required: [username, email, role_ids]
+      required: [username, role_ids]
       properties:
         username: { type: string }
-        email: { type: string }
+        email: { type: string, description: "Optional; a unique <username>@local placeholder is derived when omitted." }
+        nickname: { type: [string, 'null'] }
         role_ids: { type: array, items: { type: string } }
     UserUpdateRequest:
       type: object
@@ -1015,6 +1020,7 @@ components:
         user_id: { type: string }
         username: { type: string }
         email: { type: string }
+        nickname: { type: [string, 'null'] }
         role_ids: { type: array, items: { type: string } }
     UserDeleteRequest:
       type: object
@@ -1033,6 +1039,12 @@ components:
       type: object
       required: [user_id]
       properties: { user_id: { type: string } }
+    UserSetDisabledRequest:
+      type: object
+      required: [user_id, disabled]
+      properties:
+        user_id: { type: string }
+        disabled: { type: boolean }
     RoleCreateRequest:
       type: object
       required: [role_name, description]

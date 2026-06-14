@@ -135,6 +135,8 @@ model Users {
   user_id    String     @id @default(uuid(7))
   username   String     @unique
   email      String     @unique
+  nickname   String?
+  disabled   Boolean    @default(false)
   password   String
   created_at DateTime   @default(now())
   last_login DateTime?

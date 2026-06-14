@@ -15,6 +15,8 @@ export interface AuthUser {
   }[];
   /** Username passed to the client */
   username: PrismaField<"Users", "username">;
+  /** Optional user-chosen display name; null falls back to the username for attribution. */
+  nickname: string | null;
   /** A session_id isn't guarenteed. There may be a session even if the user isn't logged in, and may not be even if they are, depending on the the situation. */
   sessionId: PrismaField<"Sessions", "session_id"> | undefined;
   /** Is this user considered a site-admin. This is determined by the auth service, not MWS. */
@@ -94,12 +96,14 @@ export class SessionManager {
     const sessionId = streamer.cookies.getAll("session") as PrismaField<"Sessions", "session_id">[];
     const session = sessionId && await config.engine.sessions.findFirst({
       where: { session_id: { in: sessionId } },
-      select: { session_id: true, user: { select: { user_id: true, username: true, roles: { select: { role_id: true, role_name: true } } } } }
+      select: { session_id: true, user: { select: { user_id: true, username: true, nickname: true, disabled: true, roles: { select: { role_id: true, role_name: true } } } } }
     });
 
-    if (sessionId && session) return {
+    // A disabled user is treated as logged out (their session no longer authenticates).
+    if (sessionId && session && !session.user.disabled) return {
       user_id: session.user.user_id,
       username: session.user.username,
+      nickname: session.user.nickname,
       isAdmin: session.user.roles.some(e => e.role_name === "ADMIN"),
       roles: session.user.roles.map(e => ({
         role_id: e.role_id,
@@ -111,6 +115,7 @@ export class SessionManager {
     else return {
       user_id: "" as PrismaField<"Users", "user_id">,
       username: "(anon)" as PrismaField<"Users", "username">,
+      nickname: null,
       isAdmin: false,
       roles: [],
       sessionId: undefined,
@@ -126,10 +131,11 @@ export class SessionManager {
 
     const user = await prisma.users.findUnique({
       where: { username },
-      select: { user_id: true, password: true, }
+      select: { user_id: true, password: true, disabled: true, }
     });
 
     if (!user) throw "User not found.";
+    if (user.disabled) throw "Account is disabled.";
 
     const { user_id, password } = user;
 
@@ -165,6 +171,13 @@ export class SessionManager {
     const { value } = await stater.next(1, finishLoginRequest);
 
     if (!value?.session?.sessionKey) throw "Login failed.";
+
+    // Re-check the account here too: it may have been disabled between /login/1 and /login/2.
+    const account = await prisma.users.findUnique({
+      where: { user_id: value.user_id },
+      select: { disabled: true },
+    });
+    if (!account || account.disabled) throw "Account is disabled.";
 
     const session_id = await createSession(prisma, value.user_id, value.session.sessionKey);
 

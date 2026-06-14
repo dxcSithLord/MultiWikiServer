@@ -15,6 +15,7 @@ export const UserKeyMap: RouterKeyMap<UserManager, true> = {
   user_update: true,
   user_update_password: true,
   user_generate_temp_password: true,
+  user_set_disabled: true,
   role_create: true,
   role_update: true,
 }
@@ -94,6 +95,8 @@ export class UserManager {
         user_id: true,
         username: true,
         email: true,
+        nickname: true,
+        disabled: true,
         roles: true,
         last_login: true,
         created_at: true,
@@ -122,6 +125,8 @@ export class UserManager {
         user_id: true,
         username: true,
         email: true,
+        nickname: true,
+        disabled: true,
         roles: true,
         last_login: true,
         created_at: true,
@@ -133,16 +138,22 @@ export class UserManager {
 
   user_create = admin(z => z.object({
     username: z.string(),
-    email: z.string(),
+    email: z.string().optional(),
+    nickname: z.string().optional(),
     role_ids: z.prismaField("Roles", "role_id", "string", false).array(),
   }), async (state, prisma) => {
-    const { username, email, role_ids } = state.data;
+    const { username, role_ids } = state.data;
 
     state.okAdmin();
 
+    // Email is optional for the admin; the column stays unique + required, so derive a
+    // stable placeholder from the (unique) username when none is supplied.
+    const email = state.data.email?.trim() || `${username}@local`;
+    const nickname = state.data.nickname?.trim() || null;
+
     try {
       const user = await prisma.users.create({
-        data: { username, email, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
+        data: { username, email, nickname, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
         select: { user_id: true, created_at: true }
       });
 
@@ -156,9 +167,11 @@ export class UserManager {
     user_id: z.prismaField("Users", "user_id", "string"),
     username: z.prismaField("Users", "username", "string"),
     email: z.prismaField("Users", "email", "string"),
+    nickname: z.string().optional(),
     role_ids: z.prismaField("Roles", "role_id", "string").array(),
   }), async (state, prisma) => {
     const { user_id, username, email, role_ids } = state.data;
+    const nickname = state.data.nickname?.trim() || null;
 
     state.okAdmin();
 
@@ -184,11 +197,32 @@ export class UserManager {
     try {
       await prisma.users.update({
         where: { user_id },
-        data: { username, email, roles: { set: role_ids.map(role_id => ({ role_id })) } }
+        data: { username, email, nickname, roles: { set: role_ids.map(role_id => ({ role_id })) } }
       });
     } catch (error) {
       handlePrismaUniqueConstraintError(error);
     }
+
+    return null;
+  });
+
+  user_set_disabled = admin(z => z.object({
+    user_id: z.prismaField("Users", "user_id", "string"),
+    disabled: z.boolean(),
+  }), async (state, prisma) => {
+    state.okAdmin();
+    const { user_id, disabled } = state.data;
+
+    // Guard against an admin locking themselves out.
+    if (state.user.user_id === user_id && disabled)
+      throw "You cannot disable your own account";
+
+    // updateMany returns a count instead of throwing an ORM error for a missing user,
+    // so we can surface a stable domain error.
+    const { count } = await prisma.users.updateMany({ where: { user_id }, data: { disabled } });
+    if (!count) throw "User not found";
+    // Disabling immediately ends any active sessions for that user.
+    if (disabled) await prisma.sessions.deleteMany({ where: { user_id } });
 
     return null;
   });
