@@ -30,12 +30,14 @@ export class WikiStatusRoutes {
       if (!recipe) throw state.sendEmpty(404, { "x-reason": "recipe not found" });
       if (!canRead) throw state.sendEmpty(403, { "x-reason": "read access denied" });
       
-      const { isAdmin, user_id, username, isLoggedIn } = state.user;
+      const { isAdmin, user_id, username, nickname, isLoggedIn } = state.user;
 
       return {
         isAdmin,
         user_id,
-        username,
+        // The wiki client maps this to $:/status/UserName (used for done-by / comment-by /
+        // per-person attribution), so surface the user-chosen nickname when set.
+        username: nickname || username,
         isLoggedIn,
         isReadOnly: !canWrite,
       };

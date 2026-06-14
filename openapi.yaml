@@ -198,6 +198,7 @@ paths:
               - user_edit_data
               - user_update_password
               - user_generate_temp_password
+              - user_set_disabled
               - role_create
               - role_update
               - recipe_create_or_update
