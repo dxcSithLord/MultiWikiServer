@@ -27,12 +27,13 @@
             <th>Roles</th>
             <th>Last Login</th>
             <th>Created</th>
+            <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="users-tbody">
           <tr>
-            <td colspan="6" class="mws-loading">
+            <td colspan="7" class="mws-loading">
               <div class="mws-spinner"></div>
               <div>Loading users...</div>
             </td>
@@ -59,8 +60,13 @@
           </div>
 
           <div class="mws-form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" class="mws-form-input" autocomplete="email" required>
+            <label for="email">Email <span class="mws-text-muted">(optional)</span></label>
+            <input type="email" id="email" name="email" class="mws-form-input" autocomplete="email">
+          </div>
+
+          <div class="mws-form-group">
+            <label for="nickname">Nickname <span class="mws-text-muted">(optional — shown in the wikis)</span></label>
+            <input type="text" id="nickname" name="nickname" class="mws-form-input" autocomplete="nickname">
           </div>
 
           <div class="mws-form-group">
@@ -190,22 +196,26 @@
       const tbody = document.getElementById('users-tbody');
 
       if (allUsers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;" class="mws-text-muted">No users found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;" class="mws-text-muted">No users found</td></tr>';
         return;
       }
 
       tbody.innerHTML = allUsers.map(user => `
-        <tr id="user-${escapeHtml(user.user_id)}">
-          <td><strong>${escapeHtml(user.username)}</strong></td>
+        <tr id="user-${escapeHtml(user.user_id)}"${user.disabled ? ' style="opacity:.55;"' : ''}>
+          <td><strong>${escapeHtml(user.username)}</strong>${user.nickname ? ` <span class="mws-text-muted">(${escapeHtml(user.nickname)})</span>` : ''}</td>
           <td>${escapeHtml(user.email)}</td>
           <td>
             ${user.roles.map(role => `<span class="mws-badge">${escapeHtml(role.role_name)}</span>`).join('')}
           </td>
           <td>${user.last_login ? formatDate(user.last_login) : '<span class="mws-text-muted">Never</span>'}</td>
           <td>${formatDate(user.created_at)}</td>
+          <td>${user.disabled
+            ? '<span class="mws-badge" style="background:#c0392b;color:#fff;">Disabled</span>'
+            : '<span class="mws-badge" style="background:#27ae60;color:#fff;">Active</span>'}</td>
           <td>
             <div class="mws-btn-group">
               <button class="mws-btn mws-btn-primary mws-btn-sm" data-action="edit" data-user-id="${escapeHtml(user.user_id)}">Edit</button>
+              <button class="mws-btn mws-btn-sm" data-action="toggle-disabled" data-user-id="${escapeHtml(user.user_id)}" data-disabled="${user.disabled ? '1' : '0'}">${user.disabled ? 'Unlock' : 'Lock'}</button>
               <button class="mws-btn mws-btn-danger mws-btn-sm" data-action="delete" data-user-id="${escapeHtml(user.user_id)}" data-username="${escapeHtml(user.username)}">Delete</button>
             </div>
           </td>
@@ -230,7 +240,7 @@
         if (!data.isAdmin) {
           showToast('Admin access required to manage users', 'error');
           document.getElementById('users-tbody').innerHTML =
-            '<tr><td colspan="6" style="text-align: center;" class="mws-text-muted">Admin access required</td></tr>';
+            '<tr><td colspan="7" style="text-align: center;" class="mws-text-muted">Admin access required</td></tr>';
           return false;
         }
         return true;
@@ -262,6 +272,7 @@
         document.getElementById('user_id').value = data.user.user_id;
         document.getElementById('username').value = data.user.username;
         document.getElementById('email').value = data.user.email;
+        document.getElementById('nickname').value = data.user.nickname || '';
 
         allRoles = data.allRoles;
         populateRoles(data.user.roles.map(r => r.role_id));
@@ -355,15 +366,16 @@
         const userId = formData.get('user_id');
         const username = formData.get('username');
         const email = formData.get('email');
+        const nickname = formData.get('nickname');
         const role_ids = formData.getAll('role_ids');
 
         if (userId) {
           // Update existing user
-          await apiRequest('user_update', { user_id: userId, username, email, role_ids });
+          await apiRequest('user_update', { user_id: userId, username, email, nickname, role_ids });
           showToast('User updated successfully', 'success');
         } else {
           // Create new user
-          await apiRequest('user_create', { username, email, role_ids });
+          await apiRequest('user_create', { username, email, nickname, role_ids });
           showToast('User created successfully', 'success');
         }
 
@@ -389,6 +401,22 @@
         await loadUsers();
       } catch (error) {
         showToast('Failed to delete user: ' + error.message, 'error');
+      }
+    }
+
+    // Lock (disable) / unlock (enable) an account
+    async function toggleDisabled(userId, currentlyDisabled) {
+      const makeDisabled = !currentlyDisabled;
+      const verb = makeDisabled ? 'lock (disable)' : 'unlock (enable)';
+      if (!confirm(`Are you sure you want to ${verb} this account?`)) {
+        return;
+      }
+      try {
+        await apiRequest('user_set_disabled', { user_id: userId, disabled: makeDisabled });
+        showToast(`Account ${makeDisabled ? 'locked' : 'unlocked'}`, 'success');
+        await loadUsers();
+      } catch (error) {
+        showToast('Failed to update account: ' + error.message, 'error');
       }
     }
 
@@ -486,6 +514,8 @@
 
             if (action === 'edit' && userId) {
               showEditModal(userId);
+            } else if (action === 'toggle-disabled' && userId) {
+              toggleDisabled(userId, target.dataset.disabled === '1');
             } else if (action === 'delete' && userId) {
               const username = target.dataset.username;
               deleteUser(userId, username);
