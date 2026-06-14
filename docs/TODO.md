@@ -2,13 +2,13 @@
 
 Outstanding items captured for later. Done items are recorded in the git history / memory.
 
-## Documentation (see DOCUMENTATION-PLAN.md)
-- [ ] Update `README.md` (remove OAuth/"dumpster fire"/`npm install`; reflect npm 10, OPAQUE, hardening).
-- [ ] Update `CONTRIBUTING.md` (drop the deleted react-admin/setupDevServer description).
-- [ ] Create `docs/{security,testing,operations}.md`; relocate `PLANNING.md` → `docs/roadmap/`.
-- [ ] Archive the migration + Bun-era docs (`archive/htmx-migration/`, `archive/testing-bun/`).
-- [ ] Fix `ARCHITECTURE.md` §9 (audit now 0) + add `secure:true` to §10; fix `openapi.yaml` externalDocs URL.
-- [ ] Persist `SDP.md` as the canonical SDP once reviewed.
+## Documentation (see DOCUMENTATION-PLAN.md) — DONE
+- [x] Update `README.md` (removed OAuth/"dumpster fire"/`npm install`; now npm 10, OPAQUE, hardening + doc index).
+- [x] Update `CONTRIBUTING.md` (dropped the deleted react-admin/setupDevServer description → HTMX wiring).
+- [x] Create `docs/{README,security,testing,operations}.md`; relocated `PLANNING.md` → `docs/roadmap/`.
+- [x] Archive the migration + Bun-era docs (`archive/htmx-migration/`, `archive/testing-bun/`, each with a provenance README).
+- [x] Fix `ARCHITECTURE.md` §9 (audit now 0) + added `secure:true` to §10; fixed `openapi.yaml` externalDocs URL.
+- [x] Persist `SDP.md` as the canonical SDP (code-grounded review; WIP banner removed).
 
 ## Tests (see TEST-PLAN.md)
 - [ ] Add ACL tests (role-grant read/write + deny) — guards the `role_ids` bug.
