@@ -205,9 +205,10 @@ Aligned with the workspace standards (NIST/OWASP, defensive coding):
   HTML-escaped; login config is passed via `data-*` attributes, never into inline JS.
 - **Headers** — Helmet (`referrer-policy: strict-origin-when-cross-origin`, etc.); a
   Content-Security-Policy is applied to rendered wiki routes (`WikiStateStore.ts`).
-- **Outstanding** — `npm audit` reports findings in non-admin dependency subtrees
-  (TiddlyWiki/Prisma/etc.); these are tracked for a dedicated security pass and are not
-  introduced by the admin code.
+- **Dependency audit** — `npm audit --omit=dev` reports **0** vulnerabilities. The
+  high/critical advisories were all dev-only (vitest/vite/rollup/postcss); the one
+  production finding (`uuid`) is unreachable as used. The pre-push hook enforces
+  `npm audit --omit=dev --audit-level=high`.
 
 ## 10. Build, run & deploy
 
@@ -231,7 +232,10 @@ which now only gates non-admin development behaviour (wiki tiddler serving, cach
 longer builds any client bundle.
 
 For a self-hosted family/household deployment (e.g. Raspberry Pi behind Tailscale), pin the
-listener host explicitly and front it with Tailscale Serve for in-tailnet HTTPS.
+listener host explicitly and front it with Tailscale Serve for in-tailnet HTTPS. Behind a
+TLS-terminating proxy, set `secure=true` on the listener (in `dev/mws.dev.json`) so the
+session cookie carries the `Secure` attribute even though MWS itself speaks plain HTTP to the
+proxy. See `docs/operations.md` for the full deployment runbook.
 
 ## Document history
 
@@ -239,5 +243,7 @@ listener host explicitly and front it with Tailscale Serve for in-tailnet HTTPS.
   (front-door redirect → inline error responder → HTMX login with self-hosted OPAQUE →
   fallback repoint → deletion of `packages/react-admin` and `public/react-admin/` →
   build/skill cleanup). The `mws-cutover-check` skill guards against regression.
-- Historical notes from the migration live in `HTMX_ADMIN_POC.md`,
-  `HTMX_ADMIN_TESTING.md`, and `HTMX_SECURITY_FIXES.md` (superseded by this document).
+- Historical notes from the migration are archived under `archive/htmx-migration/`
+  (`HTMX_ADMIN_POC.md`, `HTMX_SECURITY_FIXES.md`, `admin-refactor.md`) and the Bun-era test
+  docs under `archive/testing-bun/` — all superseded by this document, `docs/testing.md`, and
+  `docs/security.md`.

@@ -35,7 +35,7 @@ info:
 
 externalDocs:
   description: Architecture & data model
-  url: https://github.com/TiddlyWiki/MultiWikiServer/blob/main/ARCHITECTURE.md
+  url: https://github.com/dxcSithLord/MultiWikiServer/blob/Alternative-to-react/ARCHITECTURE.md
 
 servers:
   - url: /

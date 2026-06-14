@@ -18,7 +18,7 @@ The `server` project handles all web related stuff, but in an MWS-agnostic way. 
 
 The `mws` project is the application layer of MWS and ties everything else together. It defines all the commands and web server routes and handles the database connection. 
 
-The `react-admin` package is the Admin UI. It's based on react, and is built automatically when the dev server is enabled. You can find the server route in `packages/mws/src/services/setupDevServer.ts`
+The admin UI is server-rendered HTMX (no client build step). Its routes live in `packages/mws/src/managers/admin-htmx.ts`, with HTML templates in `packages/mws/src/templates/`. Login uses OPAQUE with a self-hosted WASM bundle served from the same manager. (The former React `react-admin` package and its `setupDevServer.ts` build route were removed in the HTMX cutover — see `ARCHITECTURE.md` and `docs/SDP.md`.)
 
 If this all sounds a bit confusing, here's all the events that are emitted on a normal startup. 
 

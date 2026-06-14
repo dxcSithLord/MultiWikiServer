@@ -1,97 +1,69 @@
-# MultiWikiServer
+# MultiWikiServer (fork: `Alternative-to-react`)
 
-<a href="https://www.paypal.com/donate/?hosted_button_id=BVDDREGEU2ZEA">
-  <img src="https://github.com/user-attachments/assets/6467378f-26fd-40ff-b60e-b8d62555c08a" width="20" />
-Donate via PayPal to support development
-</a>
+A fork of [TiddlyWiki MultiWikiServer](https://github.com/TiddlyWiki/MultiWikiServer) whose
+admin UI has been rewritten from React/Material-UI to a **zero-build, server-rendered HTMX**
+admin. It powers a self-hosted, multi-user family task app reached over a private Tailscale
+network.
 
----
+Multiple users, multiple wikis for TiddlyWiki:
 
-Multiple users, multiple wikis for TiddlyWiki.
+- Bag & Recipe system for storing tiddlers (per-tiddler SQLite via Prisma).
+- User, Role and ACL management.
+- **OPAQUE** password authentication — no password is transmitted, nor stored as a
+  recoverable hash.
+- HTMX admin UI — no client bundle, no build step.
+- `reset-password` CLI for account recovery.
+- OpenAPI 3.1 contract (`openapi.yaml`) covering the full HTTP surface.
 
-- Bag & Recipe system for storing tiddlers.
-- User and Role management with ACL.
-- Multiple database engines supported, using Prisma.
-- Third-party OAuth and password-based login.
+## Documentation
 
-## Flexible and Extendible
+| Doc | What |
+|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Canonical design: request pipeline, storage, auth, ACL, security posture. |
+| [`docs/SDP.md`](docs/SDP.md) | Software Development Plan — decisions, tooling, dependencies, standards. |
+| [`docs/security.md`](docs/security.md) | Security standards (NIST/OWASP), CSRF/cookie model, FIPS position, threat-model status. |
+| [`docs/testing.md`](docs/testing.md) | The vitest unit suite, headless admin smoke, and pre-push gate. |
+| [`docs/operations.md`](docs/operations.md) | systemd + Tailscale Serve deployment, `secure=true`, backups. |
+| [`openapi.yaml`](openapi.yaml) | OpenAPI 3.1 API contract (lint with Spectral via the `openapi-coverage` skill). |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Event flow + how the server is wired together. |
 
-- Plugins can add routes and hooks.
-- Abstractions everywhere, allowing flexibility.
-- The source code is fully typed and easy to navigate.
-- Admin endpoints can also be called from the CLI.
+See [`docs/README.md`](docs/README.md) for the full documentation map.
 
-Most of these features are still in development.
+## Quickstart (development)
 
-**Do not use it to protect feelings or intellectual property.**
+This tree needs **npm 10+** (npm 9's Arborist crashes on the workspace peer-deps):
 
-## Warning: Security is still a dumpster fire.
+```sh
+npx --yes npm@10 install     # install dependencies
+npm run build                # compile dist/mws.js (tsup; no client bundle)
+npm start init-store         # create the SQLite store + the initial admin user
+npm start                    # build + listen (loopback [::1]:8080 by default)
+```
 
-**While the database structure is reliable, the security mechanism isn't. Do not use it to protect feelings or intellectual property. There are still ways to easily get around the security restrictions.**
+The initial user is `admin` / `1234` — **rotate it immediately**:
 
-![this is fine](https://github.com/user-attachments/assets/49505d25-7a48-42f1-b4f7-73e8630c1ba1)
+```sh
+npm start reset-password admin <new-password>
+```
 
+To change the listener (host / port / TLS / `secure`), create the git-ignored
+`dev/mws.dev.json`. See [`docs/operations.md`](docs/operations.md) for production deployment.
 
-## Also, this is a database, please make backups
+## Security
 
-Databases try very hard to be perfect, and data bugs are rare. But that doesn't mean things can't go wrong. Backups are pretty important. 
+This is a self-hosted app intended for a trusted, tailnet-only audience. See
+[`docs/security.md`](docs/security.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) §9 for the
+auth model (OPAQUE), CSRF defenses, cookie attributes, dependency-audit status, and the
+documented FIPS position. Review it yourself before exposing it on any untrusted network.
 
-## How to run
+## This is a database — make backups
 
-The init command creates a new folder and installs what you need to get started. You can name "my-folder" whatever you want. 
+Back up the **entire `store` folder** (every file there is a data file — never delete them)
+plus `package.json` / `package-lock.json`. The `cache` folder is regenerated on each start and
+can be excluded from backups.
 
-- `npm init @tiddlywiki/mws@latest my-folder`
-- `cd my-folder`
-- `npx mws init-store`
-- `npx mws listen --listener`
+## Upstream
 
-You can run `npx mws help` to get more information about the commands. 
-
-- the server runs on port `8080`. It does not use HTTPS by default, but you can enable it by specifying a key and cert.
-- A `passwords.key` file is created which contains the password master salt. If this file changes, all passwords will need to be reset.
-- Your database is in the `store` folder. All files in the `store` folder are data files, not temp or lock files! Never delete them! 
-
-The initial user created on first run has the username `admin` and password `1234`.
-
-If you run into trouble, or need help figuring something out, feel free to [start a discussion](https://github.com/TiddlyWiki/MultiWikiServer/discussions). If you know what's wrong, you can also open an issue.
-
-## Updates
-
-If upgrading from 0.0, the best way to save your information is to open each wiki and click the cloud status icon, then click "save snapshot for offline use". You can then create a new instance and import your wikis via the browser.
-
-If updating within 0.1,
-
-- Copy or zip your entire folder to **a safe backup folder**.
-- `npm install @tiddlywiki/mws@latest`
-
-If there are any database changes, MWS should pick them up and apply them on startup. The changes are generated by prisma's builtin migration and are supposed to preserve data, but backups are still highly recommended.
-
-The 0.1 database is incompatible with the 0.0 database. Version 0.1 will detect this and exit immediately to prevent data loss.
-
-## Backups
-
-It is recommended to backup your entire data folder, not just the `store` folder, except the `cache` folder. 
-
-- You must *always* backup the *entire* `store` folder. Never delete any files in the `store` folder. All files in the `store` folder are data files!
-- You should definitely backup the `package.json` file, as it contains the MWS version you are currently using. The `package-lock.json` file is also useful if you don't want to back up the entire `node_modules` folder for some reason. 
-- The `cache` folder (next to the `store` folder) is generated every time MWS starts, so you can exclude that from backups if you want. 
-- The `node_modules` folder should be included in your backup, as it contains all the application code required to run your database, but it can also be reconstructed from the `package-lock.json` file or the `package.json` file. 
-
-MWS uses NPM packages, so as long as you back up the *entire* store folder, and the package-lock.json file, you should have enough information for a NodeJS developer to reconstruct the site. 
-
-## Development
-
-In 0.1, the development data folder is `/dev/wiki`.
-
-If you want to work on the project,
-
-- `git clone https://github.com/TiddlyWiki/MultiWikiServer`
-- `cd MultiWikiServer`
-- `npm install` or `npm run install-android`
-- `npm run certs` - if you want https (unix only)
-- `npm start init-store` - Create the `admin` user and import default wikis.
-- `npm start` - this will run the build every time, but it's very fast.
-
-The development wiki will be active at http://localhost:8080/
-
-You can change the listeners as explained in the mws.dev.mjs file.
+This fork tracks [TiddlyWiki/MultiWikiServer](https://github.com/TiddlyWiki/MultiWikiServer).
+The shared family task-list content and deployment tooling live in a separate `moving-house-app`
+repository.
