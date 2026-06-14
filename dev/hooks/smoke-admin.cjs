@@ -7,7 +7,8 @@
  * dev/wiki/store and never uses port 8080, so it cannot disturb the live service.
  *
  * It then drives Chromium (via the globally-installed puppeteer-core) to:
- *   - log in as admin/1234 via the HTMX OPAQUE /login form,
+ *   - set a known admin password via the reset-password CLI, then log in via the
+ *     HTMX OPAQUE /login form,
  *   - load /admin-htmx/users,
  *   - assert NO pageerror / console.error fired,
  *   - assert #menu-toggle-btn toggles #sidebar.mws-collapsed,
@@ -36,6 +37,9 @@ const PUPPETEER_CORE_PATH =
   process.env.PUPPETEER_CORE_PATH ||
   "/usr/local/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/puppeteer-core";
 const CHROMIUM_PATH = process.env.CHROMIUM_PATH || "/usr/bin/chromium";
+// init-store now generates a unique RANDOM admin password (PSTI alignment), so the smoke
+// sets its own known credential on the throwaway store via the reset-password CLI.
+const SMOKE_PASSWORD = "Smoke-Test-Password-9f3k";
 
 const log = (...a) => console.log("[smoke]", ...a);
 const fail = (msg) => {
@@ -175,7 +179,7 @@ async function toggleWorks(page, btnSel, targetId, cls) {
     log("isolated wiki dir:", wikiDir);
     log("ephemeral port:", port);
 
-    // 1. Initialise a fresh store (seeds admin/1234).
+    // 1. Initialise a fresh store (creates the admin user with a random password).
     log("initialising fresh store (init-store)...");
     await new Promise((resolve, reject) => {
       const init = spawn(process.execPath, [launcher, "init-store"], {
@@ -186,6 +190,22 @@ async function toggleWorks(page, btnSel, targetId, cls) {
       init.on("error", reject);
       init.on("exit", (code) =>
         code === 0 ? resolve() : reject(new Error("init-store exited with code " + code))
+      );
+    });
+
+    // 1b. Set a deterministic admin password on this throwaway store via the reset-password
+    //     CLI (init-store now generates a unique random password per the PSTI alignment, so
+    //     the smoke can't assume a fixed default).
+    log("setting smoke admin password (reset-password)...");
+    await new Promise((resolve, reject) => {
+      const rp = spawn(process.execPath, [launcher, "reset-password", "admin", SMOKE_PASSWORD], {
+        cwd: wikiDir,
+        env: { ...process.env, ENABLE_DEV_SERVER: "mws", ENABLE_EXTERNAL_PLUGINS: "1", DEBUG: "" },
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      rp.on("error", reject);
+      rp.on("exit", (code) =>
+        code === 0 ? resolve() : reject(new Error("reset-password exited with code " + code))
       );
     });
 
@@ -225,10 +245,10 @@ async function toggleWorks(page, btnSel, targetId, cls) {
     page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 
     // Login via the HTMX OPAQUE form.
-    log("logging in as admin/1234...");
+    log("logging in as admin...");
     await page.goto(base + "/login", { waitUntil: "networkidle0" });
     await page.type("#username", "admin");
-    await page.type("#password", "1234");
+    await page.type("#password", SMOKE_PASSWORD);
     await page.click("#login-submit");
     await page
       .waitForFunction(() => location.pathname.includes("/admin-htmx"), { timeout: 15000 })

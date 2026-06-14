@@ -46,7 +46,9 @@ npm start init-store         # create the SQLite store + the initial admin user
 npm start                    # build + listen (loopback [::1]:8080 by default)
 ```
 
-The initial user is `admin` / `1234` — **rotate it immediately**:
+`init-store` creates the `admin` user with a **unique, randomly generated password printed
+once** to the console (no universal default — see [`docs/security.md`](docs/security.md) for the
+UK PSTI alignment). **Record it**, then change it any time with:
 
 ```sh
 npm start reset-password admin <new-password>

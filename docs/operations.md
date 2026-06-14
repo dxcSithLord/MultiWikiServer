@@ -73,9 +73,13 @@ Tailscale provisions the TLS certificate and preserves the `Host` header. Pair t
 ## 4. First-run hardening
 
 ```sh
-npm start init-store                              # creates admin / 1234
-npm start reset-password admin <new-password>     # ROTATE the default immediately
+npm start init-store                              # creates admin; prints a unique random password ONCE
+npm start reset-password admin <new-password>     # set your own password (record the printed one first)
 ```
+
+`init-store` no longer uses a fixed default — it prints a unique, randomly generated `admin`
+password once (UK PSTI alignment; see [`security.md`](security.md)). Capture it from the console,
+then rotate it with `reset-password` or from the HTMX admin profile.
 
 Protect `passwords.key` (the password master salt): if it changes, every stored password must
 be reset. See [`security.md`](security.md) for the full posture.

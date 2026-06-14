@@ -1,6 +1,7 @@
 import { dist_require_resolve, dist_resolve } from "@tiddlywiki/server";
 import { BaseCommand, CommandInfo } from "@tiddlywiki/commander";
 import { resolve } from "path";
+import { randomInt } from "crypto";
 import { Command as LoadWikiFolderCommand } from "./load-wiki-folder";
 
 export const info: CommandInfo = {
@@ -8,6 +9,27 @@ export const info: CommandInfo = {
 	description: "Initialize the MWS data folder",
 	arguments: [],
 };
+
+/**
+ * Generate a cryptographically-random, unique-per-install initial admin password.
+ *
+ * This replaces the former universal `1234` default to align with the INTENT of the UK
+ * Product Security and Telecommunications Infrastructure (PSTI) Act 2022 and the PSTI
+ * (Security Requirements for Relevant Connectable Products) Regulations 2023 (SI 2023/1007),
+ * Schedule 1, Part 1, para 1: a manufacturer-set password must be "unique per product" or
+ * "defined by the user", and must not be guessable, based on incremental counters, or
+ * derived from public information / identifiers. A CSPRNG-generated password is unique per
+ * install and not derived from any such source. (See docs/security.md.) Rotate later with
+ * `mws reset-password <username> <password>`.
+ *
+ * Uses an unambiguous charset (no 0/O/1/l/I): 24 chars over 56 symbols ≈ 139 bits of entropy.
+ */
+function generateInitialPassword(): string {
+	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+	let out = "";
+	for (let i = 0; i < 24; i++) out += charset[randomInt(charset.length)];
+	return out;
+}
 
 
 export class Command extends BaseCommand {
@@ -38,14 +60,29 @@ export class Command extends BaseCommand {
 					select: { user_id: true }
 				});
 
-				const password = await this.config.PasswordService.PasswordCreation(user.user_id.toString(), "1234");
+				const initialPassword = generateInitialPassword();
+				const password = await this.config.PasswordService.PasswordCreation(user.user_id.toString(), initialPassword);
 
 				await prisma.users.update({
 					where: { user_id: user.user_id },
 					data: { password: password }
 				});
 
-				console.log("Default user created with username 'admin' and password '1234'. Please change this password after logging in.");
+				console.log(
+					"\n============================================================\n" +
+					"  Initial admin account created:\n" +
+					"      username: admin\n" +
+					`      password: ${initialPassword}\n` +
+					"\n" +
+					"  RECORD THIS NOW — it is shown only once and cannot be recovered.\n" +
+					"  Log in and change it, or rotate it any time with:\n" +
+					"      mws reset-password admin <new-password>\n" +
+					"\n" +
+					"  This unique, per-install random password replaces the old fixed\n" +
+					"  default, aligning with the intent of the UK PSTI Act 2022 /\n" +
+					"  SI 2023/1007 Sch. 1 (no universal/guessable default passwords).\n" +
+					"============================================================\n"
+				);
 			}
 
 		});

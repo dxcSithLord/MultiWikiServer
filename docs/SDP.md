@@ -55,6 +55,12 @@ this server, not a part of it.
     HTTP/2 exit cleanup (`9aaf50f`). Reviewed-and-skipped: write-events fix (already present),
     dataBuffer (not needed), syncer.js (would break SSE), named-capture routing (high cost/low
     value, conflicts).
+11. **No universal default password (UK PSTI alignment).** `init-store` no longer seeds the
+    fixed `admin`/`1234`; it generates a **unique, per-install CSPRNG password** (~139 bits) and
+    prints it once. This adopts the *intent* of the PSTI Act 2022 / SI 2023/1007 Sch. 1 para 1
+    (password must be unique-per-product or user-defined, and not guessable) without claiming
+    formal conformity — the Act binds products placed on the UK market, not a self-hosted fork.
+    See `docs/security.md`. The headless smoke uses `reset-password` to set a known credential.
 
 ## 3. Tools & skills
 
@@ -69,7 +75,8 @@ puppeteer-core + chromium (headless tests), `tailscale serve`, tsup/esbuild, vit
 
 - Install: `npx --yes npm@10 install` (npm 9 Arborist crashes on the workspace peer-deps).
 - Build: `npm run build` (tsup → `dist/mws.js`); no client bundle.
-- Init: `npm start init-store` (admin/1234; **rotate it** — use `mws reset-password`).
+- Init: `npm start init-store` (creates `admin` with a **unique random password printed once** —
+  no universal default, UK PSTI-aligned; record it, rotate with `mws reset-password`).
 - Run: `npm start` → binds loopback; override via gitignored `dev/mws.dev.json`
   (`secure=true` behind a TLS-terminating proxy).
 - Deploy: Raspberry Pi 400 (aarch64) + `tailscale serve` (in-tailnet HTTPS); systemd service.

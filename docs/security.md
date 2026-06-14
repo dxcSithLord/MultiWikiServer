@@ -21,6 +21,40 @@ family-app deployment.
 > Note: the workspace standard references FIPS 140-2; 140-2 is superseded by **140-3**, which
 > is the version assessed here.
 
+## Default credentials — UK PSTI alignment
+
+MWS no longer ships a universal default password. On first `init-store`, the `admin` account is
+created with a **cryptographically-random, unique-per-install password** (24 chars over an
+unambiguous 56-symbol set ≈ 139 bits of entropy, via `node:crypto`) that is **printed once** to
+the operator's console. It can be changed at any time with `mws reset-password admin
+<new-password>` or from the HTMX admin profile.
+
+This aligns with the **intent** of the UK **Product Security and Telecommunications
+Infrastructure (PSTI) Act 2022** and the **PSTI (Security Requirements for Relevant Connectable
+Products) Regulations 2023 (SI 2023/1007), Schedule 1, Part 1, paragraph 1** (in force
+29 April 2024; enforced by the Office for Product Safety & Standards). Para 1(2) requires a
+manufacturer-set password to be:
+
+- *"unique per product"* — **met**: each install's password is independently CSPRNG-generated; or
+- *"defined by the user of the product"* — **also available**: rotate immediately via
+  `reset-password`.
+
+Para 1(3) prohibits passwords that are *"based on incremental counters"*, *"based on or derived
+from publicly available information"*, derived from identifiers such as serial numbers (absent
+good-practice hashing), or *"otherwise guessable"* — a random value derived from none of these
+satisfies all of them.
+
+> **Scope note (no over-claim):** the PSTI regime legally binds *manufacturers, importers and
+> distributors placing relevant connectable products on the UK market*. A self-hosted,
+> open-source server fork is not a "product placed on the market", so the Act does **not
+> directly apply**; this change adopts its **intent** (eliminating universal/guessable default
+> passwords). It is not a claim of formal PSTI conformity or certification.
+
+**References (verified against legislation.gov.uk):**
+- PSTI Act 2022 (c. 46): <https://www.legislation.gov.uk/ukpga/2022/46>
+- PSTI (Security Requirements…) Regulations 2023 (SI 2023/1007), Schedule 1:
+  <https://www.legislation.gov.uk/uksi/2023/1007/schedule/1/made>
+
 ## Implemented controls
 
 - **OPAQUE authentication** — two-step handshake (`POST /login/1` → `/login/2`); the server
@@ -62,8 +96,9 @@ family-app deployment.
 
 ## Operational guidance
 
-- **Rotate the default `admin`/`1234` credential immediately** with
-  `npm start reset-password admin <new-password>`.
+- **Record the unique random admin password** that `init-store` prints once (see *Default
+  credentials* below), and change it promptly with `npm start reset-password admin
+  <new-password>` or from the HTMX admin profile.
 - Match exposure to your trust model. The security model is still maturing (as upstream notes),
   so do not place it on an untrusted network without an independent review; the reference
   deployment keeps it **tailnet-only** (Tailscale Serve).

@@ -36,7 +36,8 @@ puppeteer-core) browser to guard the admin UI bug class seen during the React→
 
 - boots `dist/mws.js` against a **fresh, isolated** SQLite store in a temp dir on an
   **ephemeral loopback port** — it never touches `dev/wiki/store` or port 8080;
-- logs in as `admin`/`1234` via the HTMX OPAQUE form;
+- sets a known `admin` password on the throwaway store via the `reset-password` CLI (since
+  `init-store` now generates a unique random one), then logs in via the HTMX OPAQUE form;
 - asserts no `pageerror`/`console.error`, that the ☰ and user-menu toggles work, and that a
   Users-table row is present and clickable.
 
