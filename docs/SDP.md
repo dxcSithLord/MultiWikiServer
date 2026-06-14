@@ -6,15 +6,28 @@
 
 ## 1. Context & scope
 
-A multi-user TiddlyWiki MultiWikiServer fork whose admin UI was rewritten from React to
-HTMX, deployed as a self-hosted family task app (see the `moving-house-app` repo). Per-tiddler
-SQLite storage, OPAQUE auth, bag/recipe/role ACL, reached over Tailscale.
+A fork of TiddlyWiki MultiWikiServer that **preserves the upstream purpose** — *"Multiple
+Users, Multiple Wikis"*: hosting many TiddlyWikis for many concurrent users, with per-tiddler
+SQLite storage, OPAQUE auth, and bag/recipe/role ACL (verified against `upstream/main`,
+TiddlyWiki/MultiWikiServer). The fork's distinguishing change is replacing the React/Material-UI
+admin with a server-rendered HTMX admin to **reduce dependencies, lower the runtime resource
+footprint, and shrink the supply-chain attack surface** so MWS can run on modest hardware with
+less third-party code to trust.
+
+These changes were **driven by a concrete example use case** — a self-hosted, multi-user family
+task app (see the separate `moving-house-app` repo, reached over Tailscale) — but the server
+remains general-purpose and is not specialised to that workload. The family app is a consumer of
+this server, not a part of it.
 
 ## 2. Key engineering decisions (this branch)
 
 1. **React → HTMX admin cutover (phased, with a regression guard).** Eliminated the
    React/Material-UI SPA for a server-rendered, build-free HTMX admin (~20KB vs ~500KB, no
-   client build, offline-friendly — aligns with "Simplicity First"). Steps: front-door
+   client build, offline-friendly — aligns with "Simplicity First"). **Primary motivation:**
+   fewer dependencies and no client build toolchain → a smaller, more auditable
+   **supply-chain attack surface** and a lighter runtime/resource footprint (relevant for
+   modest self-hosting hardware), without changing the upstream multi-user/multi-wiki purpose.
+   Steps: front-door
    redirect → inline error responder → HTMX login (self-hosted OPAQUE WASM) → fallback
    repoint → delete `packages/react-admin` + `public/react-admin/` → drop dead build steps →
    canonical `ARCHITECTURE.md`. Guarded by the `mws-cutover-check` skill.
@@ -115,8 +128,9 @@ Phased path: (0) decide scope + record decision; (1) crypto inventory (no guessi
 `node:crypto` use, the session signature, RNG); (2) FIPS-mode OS + Node on a validated OpenSSL
 FIPS provider; (3) FIPS-validated TLS termination instead of tailscale serve; (4) replace
 OPAQUE; (5) FIPS-validated at-rest encryption if in scope; (6) evidence (CMVP cert refs) +
-maintenance. **Defensible decision: record FIPS-140-3 as a non-goal for this tailnet-only
-family app**; phases 0–1 are the no-regret first steps if it ever becomes required.
+maintenance. **Defensible decision: record FIPS-140-3 as a non-goal for the current reference
+deployment (tailnet-only, behind Tailscale)**; a deployment with stricter requirements would
+need the phased path above. Phases 0–1 are the no-regret first steps if it ever becomes required.
 
 ## 8. Gaps (no guessing — items needing evidence/decisions)
 

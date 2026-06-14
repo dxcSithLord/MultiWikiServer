@@ -9,15 +9,20 @@ the canonical architecture reference; keep it in sync with the code.
 
 ## 1. Overview
 
-MWS is a multi-tenant [TiddlyWiki](https://tiddlywiki.com/) server. Unlike a classic
-single-file TiddlyWiki, MWS stores **each tiddler as its own row** in a SQLite database
+MWS is a multi-tenant [TiddlyWiki](https://tiddlywiki.com/) server for **hosting multiple
+wikis accessed by many concurrent users** (the upstream purpose this fork preserves). Unlike a
+classic single-file TiddlyWiki, MWS stores **each tiddler as its own row** in a SQLite database
 (via Prisma), which makes concurrent, multi-user editing and fine-grained access control
 possible. Wikis are composed from reusable **bags** of tiddlers through **recipes**, and
 access is governed by role-based **ACLs**.
 
 The server is a small, event-driven HTTP router written in TypeScript (ESM, Node 20+).
 Its admin surface is rendered server-side as HTML and progressively enhanced with HTMX —
-no client build step, no SPA bundle.
+no client build step, no SPA bundle. This fork's defining change is that HTMX admin: it
+**reduces dependencies and the runtime footprint and shrinks the supply-chain attack surface**
+versus the upstream React/Material-UI admin. The work was driven by a concrete example use case
+(a self-hosted family task app — see the `moving-house-app` repo) without specialising the
+server to it.
 
 ## 2. High-level architecture
 

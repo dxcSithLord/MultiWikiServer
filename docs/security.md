@@ -4,13 +4,19 @@ Security standards, controls, and known gaps for this fork. This is the consolid
 security home; the canonical design detail lives in [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 §9 and the decision/standards record in [`SDP.md`](SDP.md) §6–8.
 
+A core security objective of this fork is **a reduced, more auditable footprint**: replacing the
+React/Material-UI admin with server-rendered HTMX removes a large client bundle and its build
+toolchain, shrinking the third-party **supply-chain attack surface** and the amount of code that
+must be trusted. This applies to any multi-user/multi-wiki deployment, not just the reference
+family-app deployment.
+
 ## Standards posture
 
 | Standard | Status |
 |---|---|
 | **NIST** | SP 800-63B-style authentication via OPAQUE (no password transmitted or stored as a recoverable hash). Session cookie is `HttpOnly` + `SameSite=Strict` + `Secure` (behind a TLS-terminating proxy with `secure=true`). **Gap:** no SP 800-53 control mapping; no documented key-rotation procedure for the password master key (`passwords.key`). |
 | **OWASP** | API Top-10 ruleset wired via `.spectral.yaml`, enforced by the `openapi-coverage` skill at `--fail-severity=error`. CSRF (`X-Requested-With` + same-origin referer **host**), output escaping, and the broken-access-control + error-handling fixes (see below). **Gap:** no rate limiting (OWASP API4 is `warn`-only); no anti-CSRF token (defense-in-depth). |
-| **FIPS 140-3** | **Not FIPS-validated**, and largely cannot be without major change (OPAQUE's WASM crypto, Tailscale transport, and the Pi/Debian host are not validated modules). **Recorded decision: FIPS-140-3 is a documented non-goal for this tailnet-only family app.** Do not claim FIPS compliance. See [`SDP.md`](SDP.md) §7 for the full analysis and the phased path if it ever becomes a requirement. |
+| **FIPS 140-3** | **Not FIPS-validated**, and largely cannot be without major change (OPAQUE's WASM crypto, Tailscale transport, and the Pi/Debian host are not validated modules). **Recorded decision: FIPS-140-3 is a documented non-goal for the current reference deployment (tailnet-only, behind Tailscale).** A deployment with stricter requirements would need the phased path in `SDP.md` §7. Do not claim FIPS compliance. See [`SDP.md`](SDP.md) §7 for the full analysis and the phased path if it ever becomes a requirement. |
 
 > Note: the workspace standard references FIPS 140-2; 140-2 is superseded by **140-3**, which
 > is the version assessed here.
@@ -58,8 +64,9 @@ security home; the canonical design detail lives in [`../ARCHITECTURE.md`](../AR
 
 - **Rotate the default `admin`/`1234` credential immediately** with
   `npm start reset-password admin <new-password>`.
-- Keep the deployment **tailnet-only** (Tailscale Serve); do not expose it on the public
-  internet without an independent review.
+- Match exposure to your trust model. The security model is still maturing (as upstream notes),
+  so do not place it on an untrusted network without an independent review; the reference
+  deployment keeps it **tailnet-only** (Tailscale Serve).
 - Protect `passwords.key` (the password master salt) — losing or changing it invalidates all
   stored passwords.
 

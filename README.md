@@ -1,9 +1,15 @@
 # MultiWikiServer (fork: `Alternative-to-react`)
 
-A fork of [TiddlyWiki MultiWikiServer](https://github.com/TiddlyWiki/MultiWikiServer) whose
-admin UI has been rewritten from React/Material-UI to a **zero-build, server-rendered HTMX**
-admin. It powers a self-hosted, multi-user family task app reached over a private Tailscale
-network.
+A fork of [TiddlyWiki MultiWikiServer](https://github.com/TiddlyWiki/MultiWikiServer) that keeps
+the upstream purpose — **host multiple TiddlyWikis for many concurrent users** — while replacing
+the React/Material-UI admin with a **zero-build, server-rendered HTMX** admin. The rewrite
+**reduces dependencies, lowers the runtime resource footprint, and shrinks the supply-chain
+attack surface** (no large client bundle, no client build toolchain to compromise), so MWS can
+run on modest hardware with less third-party code to trust.
+
+The change was driven by a concrete use case — a self-hosted, multi-user family task app (see
+the separate [`moving-house-app`](#upstream) repo) — but the server itself stays general-purpose:
+any multi-user, multi-wiki deployment.
 
 Multiple users, multiple wikis for TiddlyWiki:
 
@@ -51,10 +57,12 @@ To change the listener (host / port / TLS / `secure`), create the git-ignored
 
 ## Security
 
-This is a self-hosted app intended for a trusted, tailnet-only audience. See
-[`docs/security.md`](docs/security.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) §9 for the
-auth model (OPAQUE), CSRF defenses, cookie attributes, dependency-audit status, and the
-documented FIPS position. Review it yourself before exposing it on any untrusted network.
+A guiding goal of this fork is a **smaller, more auditable footprint** — fewer dependencies and
+no client build chain mean less third-party code to trust. See [`docs/security.md`](docs/security.md)
+and [`ARCHITECTURE.md`](ARCHITECTURE.md) §9 for the auth model (OPAQUE), CSRF defenses, cookie
+attributes, dependency-audit status, and the documented FIPS position. As upstream notes, the
+security model is still maturing — review it yourself and choose an exposure appropriate to your
+deployment (the reference family deployment keeps it tailnet-only behind Tailscale).
 
 ## This is a database — make backups
 
@@ -64,6 +72,10 @@ can be excluded from backups.
 
 ## Upstream
 
-This fork tracks [TiddlyWiki/MultiWikiServer](https://github.com/TiddlyWiki/MultiWikiServer).
-The shared family task-list content and deployment tooling live in a separate `moving-house-app`
-repository.
+This fork tracks [TiddlyWiki/MultiWikiServer](https://github.com/TiddlyWiki/MultiWikiServer)
+(upstream: *"Multiple Users, Multiple Wikis"*) and aims to stay mergeable with it while carrying
+the HTMX admin and the dependency/attack-surface reductions.
+
+The **example use case** that drove these changes — a shared family task list — lives in a
+separate `moving-house-app` repository (content + deployment tooling only); it consumes this
+server but is not part of it.
