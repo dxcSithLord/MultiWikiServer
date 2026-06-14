@@ -35,6 +35,21 @@ these are polish, not correctness):
       login so it shows up as "no Users row found" rather than "login failed" (cosmetic).
 
 ## Security / standards (see SDP.md §6–8)
+- [x] **API authentication — VERIFIED SECURED (finding 2026-06-14).** Items cannot be read
+      without authentication, on- or off-host. Tested live (no session cookie): every recipe is
+      `403 RECIPE_NO_READ_PERMISSION` with no content leak (`/wiki/{recipe}`, `/recipe/{recipe}/
+      status`, `/recipe/{recipe}/tiddlers/{title}` — moving-house *and* the docs/mws-docs/tour
+      recipes); admin + front-door routes `302`→`/login`. The anonymous-read path
+      (`allowAnonReads`/`allowAnonWrites`) is **commented out** in `RequestState.ts:237-240`, so
+      access is role-ACL only with no anonymous grant. **Network:** MWS binds **127.0.0.1:8080
+      loopback only** (not LAN/0.0.0.0); reachable off-machine **only via Tailscale Serve
+      (tailnet-only HTTPS); Funnel is OFF** (no public internet). Defense-in-depth: tailnet
+      boundary + per-request role auth + CSRF (`X-Requested-With` + same-origin referer-host).
+      Net: a tailnet peer (e.g. a node-shared family device) STILL needs a valid login — reach ≠ read.
+- [ ] **Possible hardening from the above finding:** no rate-limiting / lockout on `POST /login`
+      (OPAQUE) — a tailnet peer could brute-force/credential-stuff; add login throttling
+      (OWASP API4; SDP §6 already flags "no rate limiting"). Also keep Funnel OFF (document as a
+      standing invariant), and consider an alert if the listener ever binds non-loopback.
 - [ ] Decide FIPS-140-3 scope (recommend: documented non-goal for this deployment) — record it.
 - [ ] Threat model (`docs/security.md`); password-master-key rotation procedure; backup/retention policy.
 - [ ] SBOM / transitive license scan.
