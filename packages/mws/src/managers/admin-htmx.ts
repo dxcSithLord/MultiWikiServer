@@ -149,6 +149,75 @@ export class HtmxAdminManager {
     `, "utf-8"));
   }
 
+  /**
+   * Find the first wiki (recipe) the current non-admin user may READ, so the
+   * front door can land them on a usable page instead of the admin-only 403.
+   * Mirrors the ACL filter used by StatusManager.index_json (owner OR a bag-level
+   * READ grant via one of the user's roles). Returns the recipe_name or null.
+   */
+  private static async findFirstAccessibleRecipe(state: ServerRequest): Promise<string | null> {
+    const { user_id, roles } = state.user;
+    const role_ids = roles.map(r => r.role_id);
+    const OR = state.getBagWhereACL({ permission: "READ", user_id, role_ids });
+    const recipe = await state.engine.recipes.findFirst({
+      select: { recipe_name: true },
+      where: {
+        OR: [
+          // `every` alone is vacuously true for a recipe with no bags; require at
+          // least one bag (`some: {}`) so a bag-less recipe is not picked as a landing
+          // target. `every` keeps the read semantics in step with getRecipeACL.
+          { recipe_bags: { some: {}, every: { bag: { OR } } } },
+          user_id && { owner_id: { equals: user_id, not: null } },
+        ].filter(truthy),
+      },
+      orderBy: { recipe_name: "asc" },
+    });
+    return recipe?.recipe_name ?? null;
+  }
+
+  /**
+   * Friendly landing for a logged-in non-admin who has no wiki granted yet.
+   * Returns 200 (not 403) with a logout link — they are authenticated, just
+   * not yet assigned access.
+   */
+  private static sendNoWiki(state: ServerRequest) {
+    return state.sendBuffer(200, {
+      "content-type": "text/html; charset=utf-8",
+    }, Buffer.from(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>No wikis assigned</title>
+        <style>
+          body { font-family: sans-serif; max-width: 600px; margin: 100px auto; text-align: center; }
+          h1 { color: #555; }
+          a { color: #1565c0; }
+        </style>
+      </head>
+      <body>
+        <h1>No wikis assigned yet</h1>
+        <p>Your account does not yet have access to any wiki. Please ask an administrator to grant you access.</p>
+        <p><a href="#" id="logout-link" data-path-prefix="${escapeHtml(state.pathPrefix)}">Sign out</a></p>
+        <script>
+          document.getElementById('logout-link').addEventListener('click', async (e) => {
+            e.preventDefault();
+            // pathPrefix is read from a data-* attribute, never inlined into this script
+            // (matches the login page; see security.md "Output encoding").
+            const prefix = e.currentTarget.dataset.pathPrefix || "";
+            try {
+              await fetch(prefix + '/logout', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'TiddlyWiki' }
+              });
+            } catch (err) { /* fall through to redirect */ }
+            window.location.href = prefix + '/login';
+          });
+        </script>
+      </body>
+      </html>
+    `, "utf-8"));
+  }
+
   static defineRoutes(root: ServerRoute) {
     // CSS stylesheet route with ETag caching
     root.defineRoute(
@@ -295,9 +364,17 @@ export class HtmxAdminManager {
           }, Buffer.from("Redirecting to login...", "utf-8"));
         }
 
+        // Non-admins do not get the admin Recipes page; land them on their first
+        // accessible wiki instead of a dead-end 403. The front door (GET /) and the
+        // catch-all fallback both funnel here, so this is the single landing chokepoint.
         if (!state.user.isAdmin) {
-          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
-          return HtmxAdminManager.send403(state);
+          const recipeName = await HtmxAdminManager.findFirstAccessibleRecipe(state);
+          if (recipeName) {
+            return state.sendBuffer(302, {
+              "location": `${state.pathPrefix}/wiki/${encodeURIComponent(recipeName)}`,
+            }, Buffer.from("Redirecting to wiki...", "utf-8"));
+          }
+          return HtmxAdminManager.sendNoWiki(state);
         }
 
         await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
