@@ -167,7 +167,10 @@ export class UserManager {
         where: { role_name: "USER" },
         select: { role_id: true },
       });
-      if (userRole) effectiveRoleIds = [userRole.role_id];
+      // Fail closed: never create a role-less user. The baseline "USER" role is seeded
+      // at init, so its absence is a misconfiguration the admin must fix first.
+      if (!userRole) throw "Baseline 'USER' role is missing; cannot create a user without a role.";
+      effectiveRoleIds = [userRole.role_id];
     }
 
     try {

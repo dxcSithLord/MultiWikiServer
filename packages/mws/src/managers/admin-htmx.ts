@@ -163,7 +163,10 @@ export class HtmxAdminManager {
       select: { recipe_name: true },
       where: {
         OR: [
-          { recipe_bags: { every: { bag: { OR } } } },
+          // `every` alone is vacuously true for a recipe with no bags; require at
+          // least one bag (`some: {}`) so a bag-less recipe is not picked as a landing
+          // target. `every` keeps the read semantics in step with getRecipeACL.
+          { recipe_bags: { some: {}, every: { bag: { OR } } } },
           user_id && { owner_id: { equals: user_id, not: null } },
         ].filter(truthy),
       },
