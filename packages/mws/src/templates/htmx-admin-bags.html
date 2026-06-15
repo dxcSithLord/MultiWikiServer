@@ -43,6 +43,12 @@
           <label for="bag-description">Description</label>
           <textarea class="mws-form-textarea" id="bag-description" rows="3"></textarea>
         </div>
+        <div class="mws-form-group" id="bag-acl-group" style="display: none;">
+          <label>Access (roles)</label>
+          <small class="mws-text-muted">Grant roles access to this bag. READ = download / read-only; WRITE = edit on the server; ADMIN = manage this bag.</small>
+          <div id="bag-acl-rows" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;"></div>
+          <button type="button" class="mws-btn mws-btn-sm mws-btn-secondary" id="bag-acl-add" style="margin-top: 0.5rem;">Add role grant</button>
+        </div>
       </form>
     </div>
     <div class="mws-modal-footer">
@@ -87,6 +93,54 @@
     const users = indexData?.userListAdmin || indexData?.userListUser || [];
     const user = users.find(u => u.user_id === owner_id);
     return user?.username || 'Unknown';
+  }
+
+  // ---- ACL (role -> permission) editor ----
+  const ACL_PERMISSIONS = ['READ', 'WRITE', 'ADMIN'];
+
+  function aclRoleOptions(selectedRoleId) {
+    const roles = indexData?.roleList || [];
+    return roles.map(r =>
+      `<option value="${escapeHtml(r.role_id)}" ${r.role_id === selectedRoleId ? 'selected' : ''}>${escapeHtml(r.role_name)}</option>`
+    ).join('');
+  }
+
+  function addAclRow(role_id, permission) {
+    const container = document.getElementById('bag-acl-rows');
+    const row = document.createElement('div');
+    row.className = 'mws-acl-row';
+    row.style.cssText = 'display: flex; gap: 0.5rem; align-items: center;';
+    row.innerHTML = `
+      <select class="mws-form-select acl-role" style="flex: 1;">${aclRoleOptions(role_id)}</select>
+      <select class="mws-form-select acl-perm" style="width: 120px;">
+        ${ACL_PERMISSIONS.map(p => `<option value="${p}" ${p === permission ? 'selected' : ''}>${p}</option>`).join('')}
+      </select>
+      <button type="button" class="mws-btn mws-btn-sm mws-btn-danger acl-remove" aria-label="Remove">&times;</button>
+    `;
+    row.querySelector('.acl-remove').addEventListener('click', () => row.remove());
+    container.appendChild(row);
+  }
+
+  function renderAclRows(acl) {
+    const container = document.getElementById('bag-acl-rows');
+    container.innerHTML = '';
+    (acl || []).forEach(entry => addAclRow(entry.role_id, entry.permission));
+  }
+
+  function collectAcl() {
+    const rows = document.querySelectorAll('#bag-acl-rows .mws-acl-row');
+    const seen = new Set();
+    const acl = [];
+    rows.forEach(row => {
+      const role_id = row.querySelector('.acl-role').value;
+      const permission = row.querySelector('.acl-perm').value;
+      const key = role_id + '|' + permission;
+      if (role_id && !seen.has(key)) {
+        seen.add(key);
+        acl.push({ role_id, permission });
+      }
+    });
+    return acl;
   }
 
   function renderBags() {
@@ -152,11 +206,17 @@
       document.getElementById('bag-name').value = currentBag.bag_name;
       document.getElementById('bag-name').readOnly = true;
       document.getElementById('bag-description').value = currentBag.description || '';
+
+      // ACL only applies to an existing bag; show + populate when editing.
+      document.getElementById('bag-acl-group').style.display = 'block';
+      renderAclRows(currentBag.acl);
     } else {
       currentBag = null;
       title.textContent = 'Create Bag';
       form.reset();
       document.getElementById('bag-name').readOnly = false;
+      document.getElementById('bag-acl-group').style.display = 'none';
+      document.getElementById('bag-acl-rows').innerHTML = '';
     }
 
     modal.classList.add('mws-show');
@@ -170,6 +230,9 @@
       showToast('Bag name is required', 'error');
       return;
     }
+
+    const isEdit = !!currentBag;
+    const aclEntries = isEdit ? collectAcl() : null;
 
     try {
       const response = await fetch(pathPrefix + '/admin/bag_create_or_update', {
@@ -198,7 +261,27 @@
         throw new Error(errorMsg);
       }
 
-      showToast(`Bag ${currentBag ? 'updated' : 'created'} successfully`, 'success');
+      // Persist ACL grants (full replace) when editing an existing bag.
+      if (isEdit) {
+        const aclResponse = await fetch(pathPrefix + '/admin/bag_acl_update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'TiddlyWiki',
+            'Referer': window.location.href
+          },
+          body: JSON.stringify({ bag_name: name, acl: aclEntries })
+        });
+        if (!aclResponse.ok) {
+          const text = await aclResponse.text();
+          let errorMsg = 'Bag saved, but updating access failed';
+          try { const data = JSON.parse(text); if (data.reason) errorMsg = data.reason; }
+          catch (e) { if (text && text.length < 200) errorMsg = text; }
+          throw new Error(errorMsg);
+        }
+      }
+
+      showToast(`Bag ${isEdit ? 'updated' : 'created'} successfully`, 'success');
       closeBagModal();
       loadIndex();
     } catch (error) {
@@ -256,6 +339,7 @@
     document.getElementById('bag-modal-close').addEventListener('click', closeBagModal);
     document.getElementById('bag-cancel-btn').addEventListener('click', closeBagModal);
     document.getElementById('bag-save-btn').addEventListener('click', saveBag);
+    document.getElementById('bag-acl-add').addEventListener('click', () => addAclRow('', 'READ'));
 
     document.getElementById('bag-modal').addEventListener('click', (e) => {
       if (e.target.id === 'bag-modal') closeBagModal();

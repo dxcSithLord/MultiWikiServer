@@ -67,6 +67,12 @@
           <textarea class="mws-form-textarea" id="recipe-bags" rows="5" placeholder="system&#10;+my-bag&#10;another-bag"></textarea>
           <small class="mws-text-muted">Prefix bag name with + to include ACL</small>
         </div>
+        <div class="mws-form-group" id="recipe-acl-group" style="display: none;">
+          <label>Access (roles)</label>
+          <small class="mws-text-muted">Grant roles access to this recipe. READ = download / read-only; WRITE = edit on the server; ADMIN = manage this recipe.</small>
+          <div id="recipe-acl-rows" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;"></div>
+          <button type="button" class="mws-btn mws-btn-sm mws-btn-secondary" id="recipe-acl-add" style="margin-top: 0.5rem;">Add role grant</button>
+        </div>
       </form>
     </div>
     <div class="mws-modal-footer">
@@ -117,6 +123,54 @@
   function getBagName(bag_id) {
     const bag = indexData?.bagList?.find(b => b.bag_id === bag_id);
     return bag?.bag_name || '?';
+  }
+
+  // ---- ACL (role -> permission) editor ----
+  const ACL_PERMISSIONS = ['READ', 'WRITE', 'ADMIN'];
+
+  function aclRoleOptions(selectedRoleId) {
+    const roles = indexData?.roleList || [];
+    return roles.map(r =>
+      `<option value="${escapeHtml(r.role_id)}" ${r.role_id === selectedRoleId ? 'selected' : ''}>${escapeHtml(r.role_name)}</option>`
+    ).join('');
+  }
+
+  function addAclRow(role_id, permission) {
+    const container = document.getElementById('recipe-acl-rows');
+    const row = document.createElement('div');
+    row.className = 'mws-acl-row';
+    row.style.cssText = 'display: flex; gap: 0.5rem; align-items: center;';
+    row.innerHTML = `
+      <select class="mws-form-select acl-role" style="flex: 1;">${aclRoleOptions(role_id)}</select>
+      <select class="mws-form-select acl-perm" style="width: 120px;">
+        ${ACL_PERMISSIONS.map(p => `<option value="${p}" ${p === permission ? 'selected' : ''}>${p}</option>`).join('')}
+      </select>
+      <button type="button" class="mws-btn mws-btn-sm mws-btn-danger acl-remove" aria-label="Remove">&times;</button>
+    `;
+    row.querySelector('.acl-remove').addEventListener('click', () => row.remove());
+    container.appendChild(row);
+  }
+
+  function renderAclRows(acl) {
+    const container = document.getElementById('recipe-acl-rows');
+    container.innerHTML = '';
+    (acl || []).forEach(entry => addAclRow(entry.role_id, entry.permission));
+  }
+
+  function collectAcl() {
+    const rows = document.querySelectorAll('#recipe-acl-rows .mws-acl-row');
+    const seen = new Set();
+    const acl = [];
+    rows.forEach(row => {
+      const role_id = row.querySelector('.acl-role').value;
+      const permission = row.querySelector('.acl-perm').value;
+      const key = role_id + '|' + permission;
+      if (role_id && !seen.has(key)) {
+        seen.add(key);
+        acl.push({ role_id, permission });
+      }
+    });
+    return acl;
   }
 
   function renderRecipes() {
@@ -237,11 +291,17 @@
         return rb.with_acl ? `+${name}` : name;
       }).join('\n') || '';
       document.getElementById('recipe-bags').value = bags;
+
+      // ACL only applies to an existing recipe; show + populate when editing.
+      document.getElementById('recipe-acl-group').style.display = 'block';
+      renderAclRows(currentRecipe.acl);
     } else {
       currentRecipe = null;
       title.textContent = 'Create Recipe';
       form.reset();
       document.getElementById('recipe-name').readOnly = false;
+      document.getElementById('recipe-acl-group').style.display = 'none';
+      document.getElementById('recipe-acl-rows').innerHTML = '';
     }
 
     modal.classList.add('mws-show');
@@ -267,6 +327,9 @@
       const bag_name = with_acl ? line.substring(1) : line;
       return { bag_name, with_acl };
     });
+
+    const isEdit = !!currentRecipe;
+    const aclEntries = isEdit ? collectAcl() : null;
 
     try {
       const response = await fetch(pathPrefix + '/admin/recipe_create_or_update', {
@@ -301,7 +364,27 @@
         throw new Error(errorMsg);
       }
 
-      showToast(`Recipe ${currentRecipe ? 'updated' : 'created'} successfully`, 'success');
+      // Persist ACL grants (full replace) when editing an existing recipe.
+      if (isEdit) {
+        const aclResponse = await fetch(pathPrefix + '/admin/recipe_acl_update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'TiddlyWiki',
+            'Referer': window.location.href
+          },
+          body: JSON.stringify({ recipe_name: name, acl: aclEntries })
+        });
+        if (!aclResponse.ok) {
+          const text = await aclResponse.text();
+          let errorMsg = 'Recipe saved, but updating access failed';
+          try { const data = JSON.parse(text); if (data.reason) errorMsg = data.reason; }
+          catch (e) { if (text && text.length < 200) errorMsg = text; }
+          throw new Error(errorMsg);
+        }
+      }
+
+      showToast(`Recipe ${isEdit ? 'updated' : 'created'} successfully`, 'success');
       closeRecipeModal();
       loadIndex();
     } catch (error) {
@@ -360,6 +443,7 @@
     document.getElementById('recipe-modal-close').addEventListener('click', closeRecipeModal);
     document.getElementById('recipe-cancel-btn').addEventListener('click', closeRecipeModal);
     document.getElementById('recipe-save-btn').addEventListener('click', saveRecipe);
+    document.getElementById('recipe-acl-add').addEventListener('click', () => addAclRow('', 'READ'));
 
     // Close modal on outside click
     document.getElementById('recipe-modal').addEventListener('click', (e) => {

@@ -81,7 +81,21 @@ satisfies all of them.
 - **Authorization (ACL)** — role-based read/write on bags and recipes. A high-severity fix
   corrected `getRecipeACL`/`getBagACL` to read `roles.map(r => r.role_id)` (the code previously
   read an always-`undefined` `role_ids`, so non-admins could only reach resources they owned).
-  See `packages/mws/src/RequestState.ts`.
+  See `packages/mws/src/RequestState.ts`. The grant chain is **User → Role → ACL(role,
+  permission) → Bag/Recipe**, where `permission` is hierarchical `READ < WRITE < ADMIN`
+  (READ = download / read-only, WRITE = edit on the server, ADMIN = manage that resource).
+- **Access-management UI** — admins set, change, and remove role→permission grants from the
+  **Recipes** and **Bags** edit modals ("Access (roles)" section), wired to the existing
+  `recipe_acl_update` / `bag_acl_update` admin keys (full-replace semantics). Previously these
+  keys had no UI and were reachable only by direct API call.
+- **Non-admin landing** — the front door (`GET /`) and the catch-all both funnel to
+  `/admin-htmx`; a logged-in **non-admin** is now redirected from there to their first accessible
+  wiki (`/wiki/{recipe}`) instead of a dead-end 403. A non-admin with no granted wiki sees a
+  friendly "no wikis assigned" page (HTTP 200), not 403. See `packages/mws/src/managers/admin-htmx.ts`.
+- **Baseline role assignment** — `user_create` assigns the `USER` role when the admin selects
+  none, so users are never created role-less (which would deny all default wiki access). An
+  **enabled** user must keep at least one role; only a **disabled (locked)** account may have all
+  roles removed. See `packages/mws/src/managers/admin-users.ts`.
 - **Error contract** — `Streamer.catcher` honours `SendError.status`/`reason` instead of
   blanket-500ing, so an unauthorized request surfaces as `403`, not `500`.
 - **Open-redirect guard** — the login `redirect` parameter accepts only same-origin

@@ -84,6 +84,20 @@ then rotate it with `reset-password` or from the HTMX admin profile.
 Protect `passwords.key` (the password master salt): if it changes, every stored password must
 be reset. See [`security.md`](security.md) for the full posture.
 
+### Granting wiki access to a user
+
+New users get the `USER` role by default. To grant access to a specific wiki:
+
+1. Open **Admin → Recipes** (or **Bags**) and **Edit** the wiki.
+2. In the **Access (roles)** section, **Add role grant**: pick a role and a permission
+   (`READ` = download / read-only, `WRITE` = edit on the server, `ADMIN` = manage the resource),
+   then **Save**.
+3. Assign the user that role from **Admin → Users** if they do not already hold it.
+
+A logged-in non-admin who opens the site lands on their first accessible wiki automatically; one
+with no grant yet sees a "no wikis assigned" page until an admin grants access. An **enabled**
+user must keep at least one role — lock (disable) the account first if you need to strip all roles.
+
 ## 5. Backups
 
 Back up the **entire data folder**, not just `store`:

@@ -158,9 +158,21 @@ export class UserManager {
     // tailscale_login is unique; blank must be null (not "") so multiple unset users don't collide.
     const tailscale_login = state.data.tailscale_login?.trim() || null;
 
+    // Every enabled user must hold at least one role; default new users to the
+    // baseline "USER" role when the admin selects none, so they are never created
+    // role-less (which would deny them all default wiki access).
+    let effectiveRoleIds = role_ids;
+    if (effectiveRoleIds.length === 0) {
+      const userRole = await prisma.roles.findUnique({
+        where: { role_name: "USER" },
+        select: { role_id: true },
+      });
+      if (userRole) effectiveRoleIds = [userRole.role_id];
+    }
+
     try {
       const user = await prisma.users.create({
-        data: { username, email, nickname, tailscale_login, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
+        data: { username, email, nickname, tailscale_login, password: "", roles: { connect: effectiveRoleIds.map(role_id => ({ role_id })) } },
         select: { user_id: true, created_at: true }
       });
 
@@ -205,6 +217,18 @@ export class UserManager {
       }
 
       // Allow email/username updates for self
+    }
+
+    // An enabled user must keep at least one role; only a disabled (locked) account
+    // may have all roles removed. This pairs with the lock/disable workflow.
+    if (role_ids.length === 0) {
+      const target = await prisma.users.findUnique({
+        where: { user_id },
+        select: { disabled: true },
+      });
+      if (!target) throw "User not found";
+      if (!target.disabled)
+        throw "An enabled user must have at least one role. Lock (disable) the account first to remove all roles.";
     }
 
     try {
