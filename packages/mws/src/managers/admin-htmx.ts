@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { ServerRoute, dist_resolve, dist_require_resolve, ServerRequest } from "@tiddlywiki/server";
 import { serverEvents } from "@tiddlywiki/events";
 import { createHash } from "crypto";
+import { REFERENCE_RECIPES } from "../services/reference-recipes";
 
 declare module "@tiddlywiki/events" {
   interface ServerEventsMap {
@@ -93,6 +94,13 @@ export class HtmxAdminManager {
     let html = await readFile(templatePath, "utf-8");
     html = html.replace(/\{\{pathPrefix\}\}/g, escapeHtml(pathPrefix));
     html = html.replace(/\{\{redirect\}\}/g, escapeHtml(redirect));
+    // Offer the "Log in with Tailscale (SSO)" short-cut only when SSO is enabled.
+    // It clears the logout suppress marker (GET /resume-sso) so SSO resumes at once.
+    // A plain link (not inlined JS); pathPrefix is attribute-escaped.
+    const ssoButton = process.env.MWS_TAILSCALE_SSO === "1"
+      ? `<p class="mws-login-sso"><a class="mws-btn" href="${escapeHtml(pathPrefix)}/resume-sso">Log in with Tailscale (SSO)</a></p>`
+      : "";
+    html = html.replace(/\{\{ssoButton\}\}/g, ssoButton);
     return html;
   }
 
@@ -150,67 +158,96 @@ export class HtmxAdminManager {
   }
 
   /**
-   * Find the first wiki (recipe) the current non-admin user may READ, so the
-   * front door can land them on a usable page instead of the admin-only 403.
-   * Mirrors the ACL filter used by StatusManager.index_json (owner OR a bag-level
-   * READ grant via one of the user's roles). Returns the recipe_name or null.
+   * List the wikis (recipe names) the current user may READ, for the user home
+   * page. Mirrors the ACL filter used by StatusManager.index_json: an admin sees
+   * all recipes; otherwise it is owner OR a bag-level READ grant via one of the
+   * user's roles (at least one bag, all bags readable). Sorted by name.
    */
-  private static async findFirstAccessibleRecipe(state: ServerRequest): Promise<string | null> {
-    const { user_id, roles } = state.user;
+  private static async findAccessibleRecipes(state: ServerRequest): Promise<string[]> {
+    const { user_id, roles, isAdmin } = state.user;
     const role_ids = roles.map(r => r.role_id);
     const OR = state.getBagWhereACL({ permission: "READ", user_id, role_ids });
-    const recipe = await state.engine.recipes.findFirst({
+    const recipes = await state.engine.recipes.findMany({
       select: { recipe_name: true },
-      where: {
+      where: isAdmin ? undefined : {
         OR: [
-          // `every` alone is vacuously true for a recipe with no bags; require at
-          // least one bag (`some: {}`) so a bag-less recipe is not picked as a landing
-          // target. `every` keeps the read semantics in step with getRecipeACL.
+          // `every` is vacuously true for a recipe with no bags; require at least
+          // one bag (`some: {}`). `every` keeps the read semantics in step with
+          // getRecipeACL.
           { recipe_bags: { some: {}, every: { bag: { OR } } } },
           user_id && { owner_id: { equals: user_id, not: null } },
         ].filter(truthy),
       },
       orderBy: { recipe_name: "asc" },
     });
-    return recipe?.recipe_name ?? null;
+    return recipes.map(r => r.recipe_name);
   }
 
   /**
-   * Friendly landing for a logged-in non-admin who has no wiki granted yet.
-   * Returns 200 (not 403) with a logout link — they are authenticated, just
-   * not yet assigned access.
+   * The user home page: a standalone (non-admin-frame) page listing the wikis the
+   * user can reach, with a logout button and — when permitted — a link to manage
+   * wikis. Reference/doc wikis open in a new tab; task wikis open in the same tab.
+   * If the user has no wiki yet, shows a "contact an administrator" message
+   * (this replaces the former no-wiki page).
    */
-  private static sendNoWiki(state: ServerRequest) {
+  private static renderUserHome(state: ServerRequest, recipeNames: string[]) {
+    const prefix = state.pathPrefix;
+    // Manage-wikis is admin-only today; Batch 3 extends this to WIKI_ADMIN.
+    const canManage = state.user.isAdmin;
+
+    const list = recipeNames.map(name => {
+      const ref = REFERENCE_RECIPES.has(name);
+      const attrs = ref ? ' target="_blank" rel="noopener"' : '';
+      const tag = ref ? ' <span class="ref">reference ↗</span>' : '';
+      return `<li><a href="${escapeHtml(prefix)}/wiki/${encodeURIComponent(name)}"${attrs}>${escapeHtml(name)}</a>${tag}</li>`;
+    }).join('\n');
+
+    const body = recipeNames.length
+      ? `<p>Choose a wiki:</p>\n<ul class="wikis">\n${list}\n</ul>`
+      : `<p>Your account does not yet have access to any wiki. Please ask an administrator to grant you access.</p>`;
+
+    const manage = canManage
+      ? `<p class="manage"><a href="${escapeHtml(prefix)}/admin-htmx">Manage wikis</a></p>`
+      : '';
+
     return state.sendBuffer(200, {
       "content-type": "text/html; charset=utf-8",
     }, Buffer.from(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>No wikis assigned</title>
+        <meta charset="utf-8">
+        <title>MWS — Your wikis</title>
         <style>
-          body { font-family: sans-serif; max-width: 600px; margin: 100px auto; text-align: center; }
-          h1 { color: #555; }
+          body { font-family: sans-serif; max-width: 640px; margin: 80px auto; padding: 0 1rem; }
+          h1 { color: #333; }
+          ul.wikis { list-style: none; padding: 0; }
+          ul.wikis li { margin: .4em 0; padding: .6em .8em; background: #eef3ff; border: 1px solid #c7d6f0; border-radius: 6px; }
+          ul.wikis a { color: #1565c0; text-decoration: none; font-weight: bold; }
+          .ref { color: #666; font-weight: normal; font-size: .85em; }
+          .manage { margin-top: 1.5em; }
           a { color: #1565c0; }
+          .signout { margin-top: 2em; border-top: 1px solid #eee; padding-top: 1em; }
         </style>
       </head>
       <body>
-        <h1>No wikis assigned yet</h1>
-        <p>Your account does not yet have access to any wiki. Please ask an administrator to grant you access.</p>
-        <p><a href="#" id="logout-link" data-path-prefix="${escapeHtml(state.pathPrefix)}">Sign out</a></p>
+        <h1>Your wikis</h1>
+        ${body}
+        ${manage}
+        <p class="signout"><a href="#" id="logout-link" data-path-prefix="${escapeHtml(prefix)}">Sign out</a></p>
         <script>
           document.getElementById('logout-link').addEventListener('click', async (e) => {
             e.preventDefault();
             // pathPrefix is read from a data-* attribute, never inlined into this script
             // (matches the login page; see security.md "Output encoding").
-            const prefix = e.currentTarget.dataset.pathPrefix || "";
+            const p = e.currentTarget.dataset.pathPrefix || "";
             try {
-              await fetch(prefix + '/logout', {
+              await fetch(p + '/logout', {
                 method: 'POST',
                 headers: { 'X-Requested-With': 'TiddlyWiki' }
               });
             } catch (err) { /* fall through to redirect */ }
-            window.location.href = prefix + '/login';
+            window.location.href = p + '/login';
           });
         </script>
       </body>
@@ -349,6 +386,50 @@ export class HtmxAdminManager {
       }
     );
 
+    // User home page — lists the wikis the signed-in user can reach, with logout.
+    // Any authenticated user (admin or not); non-admins are routed here by the
+    // front door and the /admin-htmx redirect.
+    root.defineRoute(
+      {
+        path: /^\/home$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+        const recipes = await HtmxAdminManager.findAccessibleRecipes(state);
+        return HtmxAdminManager.renderUserHome(state, recipes);
+      }
+    );
+
+    // Resume Tailscale SSO: clears the short-lived `mws_no_sso` suppress marker that
+    // logout sets, so the next request re-authenticates via SSO immediately (the
+    // login page offers this as a "Log in with Tailscale" short-cut). Fixed redirect
+    // to the front door — no open-redirect.
+    root.defineRoute(
+      {
+        path: /^\/resume-sso$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        state.setCookie("mws_no_sso", "", {
+          httpOnly: true,
+          path: state.pathPrefix + "/",
+          expires: new Date(0),
+          secure: state.expectSecure,
+          sameSite: "Strict",
+        });
+        return state.sendBuffer(302, {
+          "location": `${state.pathPrefix}/`,
+        }, Buffer.from("Resuming SSO...", "utf-8"));
+      }
+    );
+
     // Recipes route (default admin-htmx page)
     root.defineRoute(
       {
@@ -364,17 +445,14 @@ export class HtmxAdminManager {
           }, Buffer.from("Redirecting to login...", "utf-8"));
         }
 
-        // Non-admins do not get the admin Recipes page; land them on their first
-        // accessible wiki instead of a dead-end 403. The front door (GET /) and the
-        // catch-all fallback both funnel here, so this is the single landing chokepoint.
+        // Non-admins do not get the admin Recipes page; send them to their user
+        // home page, which lists the wikis they can reach (and a logout). The
+        // front door (GET /) and the catch-all fallback also route non-admins to
+        // /home, so /home is the single non-admin landing.
         if (!state.user.isAdmin) {
-          const recipeName = await HtmxAdminManager.findFirstAccessibleRecipe(state);
-          if (recipeName) {
-            return state.sendBuffer(302, {
-              "location": `${state.pathPrefix}/wiki/${encodeURIComponent(recipeName)}`,
-            }, Buffer.from("Redirecting to wiki...", "utf-8"));
-          }
-          return HtmxAdminManager.sendNoWiki(state);
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/home`,
+          }, Buffer.from("Redirecting to home...", "utf-8"));
         }
 
         await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);

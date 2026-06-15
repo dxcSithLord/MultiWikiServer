@@ -157,6 +157,8 @@ REGEX_DOC_PATHS=(
   "/\$cache/{plugin}/plugin.js"    # cache.ts  /^\/\$cache\/(.*)\/plugin\.js$/
   "/mws-docs/{path}"               # tw-routes.ts  ^/mws-docs(/|$)
   "/login"                         # admin-htmx.ts  /^\/login$/
+  "/home"                          # admin-htmx.ts  /^\/home$/
+  "/resume-sso"                    # admin-htmx.ts  /^\/resume-sso$/
   "/admin-htmx"                    # admin-htmx.ts  /^\/admin-htmx\/?$/
   "/admin-htmx/bags"               # admin-htmx.ts
   "/admin-htmx/plugins"            # admin-htmx.ts
@@ -184,6 +186,8 @@ REGEX_SRC_KNOWN=(
   '/^\/wiki\/(.*)$/'                       # wiki-index.ts               -> /wiki/{recipe_name}
   '/^\/\$cache\/(.*)\/plugin\.js$/'        # cache.ts                    -> /$cache/{plugin}/plugin.js
   '/^\/login$/'                            # admin-htmx.ts               -> /login
+  '/^\/home$/'                             # admin-htmx.ts               -> /home
+  '/^\/resume-sso$/'                       # admin-htmx.ts               -> /resume-sso
   '/^\/admin-htmx\/?$/'                    # admin-htmx.ts               -> /admin-htmx
   '/^\/admin-htmx\/bags$/'                 # admin-htmx.ts
   '/^\/admin-htmx\/plugins$/'              # admin-htmx.ts

@@ -126,4 +126,36 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
     expect(u.username).toBe("cookieuser");
     expect(u.sessionId).toBe("sess-1");
   });
+
+  it("skips SSO when the mws_no_sso suppress marker is present (logout)", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    const streamer = {
+      cookies: { getAll: (name: string) => name === "mws_no_sso" ? ["1"] : [] },
+      headers: { "tailscale-user-login": "alice@example.com" },
+    } as any;
+    const u = await SessionManager.parseIncomingRequest(streamer, mkConfig(alice));
+    expect(u.isLoggedIn).toBe(false); // suppressed → anonymous despite a mapped header
+  });
+
+  it("a valid session cookie still wins even with the suppress marker", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    const streamer = {
+      cookies: { getAll: (name: string) => name === "session" ? ["sess-1"] : name === "mws_no_sso" ? ["1"] : [] },
+      headers: { "tailscale-user-login": "alice@example.com" },
+    } as any;
+    const config = {
+      engine: {
+        sessions: {
+          findFirst: async () => ({
+            session_id: "sess-1",
+            user: { user_id: "u-cookie", username: "cookieuser", nickname: null, disabled: false, roles: [] },
+          }),
+        },
+        users: { findUnique: async () => alice },
+      },
+    } as any;
+    const u = await SessionManager.parseIncomingRequest(streamer, config);
+    expect(u.isLoggedIn).toBe(true);
+    expect(u.username).toBe("cookieuser");
+  });
 });

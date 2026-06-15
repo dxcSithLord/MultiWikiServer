@@ -132,3 +132,15 @@ Family members can be logged in automatically by their Tailscale identity — no
 
 Unmapped identities are denied (no auto-provision); a disabled account is rejected; and password
 login still works (admin/CLI/non-tailnet). See [`security.md`](security.md) for the trust model.
+
+### Signing out / switching persona under SSO
+
+Because SSO authenticates from the identity header on every request, a plain logout would
+re-authenticate instantly. So **logout** (the button on `/home` or the admin frame) sets a
+short-lived `mws_no_sso` marker that suppresses SSO for ~5 minutes, landing you on `/login`:
+
+- To **sign in as a different persona**, enter that user's username/password on `/login` — the
+  password session takes precedence and the marker is cleared.
+- To **come back as yourself immediately** (skip the wait), click **"Log in with Tailscale (SSO)"**
+  on the login page (`GET /resume-sso`) — it clears the marker and SSO re-resolves.
+- Otherwise SSO simply resumes automatically once the marker expires.

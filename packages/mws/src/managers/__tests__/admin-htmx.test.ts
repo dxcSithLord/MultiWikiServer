@@ -220,12 +220,13 @@ describe("HtmxAdminManager", () => {
       expect(result.body).toContain("<!DOCTYPE html>");
     });
 
-    it("should land a non-admin on their wiki instead of 403", async () => {
+    it("should redirect a non-admin to the user home page instead of 403", async () => {
       HtmxAdminManager.defineRoutes(mockRoot);
 
       const mainRoute = capturedRoutes.find(r =>
         r.config.path.test("/admin-htmx") &&
-        !r.config.path.toString().includes("profile")
+        !r.config.path.toString().includes("profile") &&
+        !r.config.path.test("/home")
       );
 
       const state = createMockState({
@@ -235,14 +236,12 @@ describe("HtmxAdminManager", () => {
           isAdmin: false,
           roles: [{ role_id: "r1", role_name: "USER" }],
         },
-        getBagWhereACL: () => [],
-        engine: { recipes: { findFirst: async () => ({ recipe_name: "moving-house" }) } },
       } as any);
 
       const result = await mainRoute!.handler(state);
 
       expect(result.status).toBe(302);
-      expect(result.headers.location).toContain("/wiki/moving-house");
+      expect(result.headers.location).toContain("/home");
     });
 
     it("should emit page accessed event for admin", async () => {
@@ -367,12 +366,13 @@ describe("HtmxAdminManager", () => {
       expect(result.status).toBe(403);
     });
 
-    it("should redirect a non-admin to their first accessible wiki", async () => {
+    it("should redirect a non-admin from /admin-htmx to the user home page", async () => {
       HtmxAdminManager.defineRoutes(mockRoot);
 
       const mainRoute = capturedRoutes.find(r =>
         r.config.path.test("/admin-htmx") &&
-        !r.config.path.toString().includes("profile")
+        !r.config.path.toString().includes("profile") &&
+        !r.config.path.test("/home")
       );
 
       const state = createMockState({
@@ -382,39 +382,71 @@ describe("HtmxAdminManager", () => {
           isAdmin: false,
           roles: [{ role_id: "r1", role_name: "USER" }],
         },
-        getBagWhereACL: () => [],
-        engine: { recipes: { findFirst: async () => ({ recipe_name: "family wiki" }) } },
       } as any);
 
       const result = await mainRoute!.handler(state);
 
       expect(result.status).toBe(302);
-      expect(result.headers.location).toContain("/wiki/family%20wiki");
+      expect(result.headers.location).toContain("/home");
+    });
+  });
+
+  describe("User Home Route (/home)", () => {
+    const homeRoute = () => capturedRoutes.find(r => r.config.path.test("/home"));
+
+    it("redirects to /login when unauthenticated", async () => {
+      HtmxAdminManager.defineRoutes(mockRoot);
+      const state = createMockState({
+        user: undefined,
+        okUser: function () { throw new Error("Not authenticated"); },
+      } as any);
+      const result = await homeRoute()!.handler(state);
+      expect(result.status).toBe(302);
+      expect(result.headers.location).toContain("/login");
     });
 
-    it("should show a friendly no-wiki page (200) when a non-admin has no access", async () => {
+    it("lists accessible wikis, opening reference wikis in a new tab", async () => {
       HtmxAdminManager.defineRoutes(mockRoot);
-
-      const mainRoute = capturedRoutes.find(r =>
-        r.config.path.test("/admin-htmx") &&
-        !r.config.path.toString().includes("profile")
-      );
-
       const state = createMockState({
-        user: {
-          user_id: "user-123",
-          username: "normaluser",
-          isAdmin: false,
-          roles: [],
-        },
+        user: { user_id: "u1", username: "normaluser", isAdmin: false, roles: [{ role_id: "r1", role_name: "USER" }] },
         getBagWhereACL: () => [],
-        engine: { recipes: { findFirst: async () => null } },
+        engine: { recipes: { findMany: async () => [{ recipe_name: "moving-house" }, { recipe_name: "docs" }] } },
       } as any);
-
-      const result = await mainRoute!.handler(state);
-
+      const result = await homeRoute()!.handler(state);
       expect(result.status).toBe(200);
-      expect(result.body).toContain("No wikis assigned");
+      expect(result.body).toContain("/wiki/moving-house");
+      expect(result.body).toContain("/wiki/docs");
+      // The reference wiki "docs" opens in a new tab; the task wiki does not.
+      expect(result.body).toMatch(/\/wiki\/docs"[^>]*target="_blank"/);
+      expect(result.body).not.toMatch(/\/wiki\/moving-house"[^>]*target="_blank"/);
+    });
+
+    it("shows a contact-admin message when the user has no wiki", async () => {
+      HtmxAdminManager.defineRoutes(mockRoot);
+      const state = createMockState({
+        user: { user_id: "u1", username: "normaluser", isAdmin: false, roles: [] },
+        getBagWhereACL: () => [],
+        engine: { recipes: { findMany: async () => [] } },
+      } as any);
+      const result = await homeRoute()!.handler(state);
+      expect(result.status).toBe(200);
+      expect(result.body).toContain("ask an administrator");
+    });
+  });
+
+  describe("Resume SSO Route (/resume-sso)", () => {
+    it("clears the suppress marker and redirects to the front door", async () => {
+      HtmxAdminManager.defineRoutes(mockRoot);
+      const cleared: Array<{ name: string; value: string }> = [];
+      const route = capturedRoutes.find(r => r.config.path.test("/resume-sso"));
+      const state = createMockState({
+        expectSecure: true,
+        setCookie: (name: string, value: string) => { cleared.push({ name, value }); },
+      } as any);
+      const result = await route!.handler(state);
+      expect(result.status).toBe(302);
+      expect(result.headers.location).toMatch(/\/$/);
+      expect(cleared.some(c => c.name === "mws_no_sso" && c.value === "")).toBe(true);
     });
   });
 

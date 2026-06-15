@@ -183,9 +183,17 @@ export class SessionManager {
       isLoggedIn: true,
     };
 
-    // No valid session cookie — try opt-in Tailscale SSO before treating as anonymous.
-    const ssoUser = await SessionManager.resolveTailscaleSSO(streamer, config);
-    if (ssoUser) return ssoUser;
+    // No valid session cookie — try opt-in Tailscale SSO before treating as anonymous,
+    // UNLESS the user just logged out: the short-lived `mws_no_sso` cookie (set by
+    // logout) suppresses SSO so they can stay logged out or sign in as a different
+    // persona by password. It is TTL-bounded, so SSO resumes automatically when it
+    // expires (or immediately via GET /resume-sso). A valid session cookie above
+    // always wins, so password login still works while the marker is present.
+    const ssoSuppressed = streamer.cookies.getAll("mws_no_sso").length > 0;
+    if (!ssoSuppressed) {
+      const ssoUser = await SessionManager.resolveTailscaleSSO(streamer, config);
+      if (ssoUser) return ssoUser;
+    }
 
     return {
       user_id: "" as PrismaField<"Users", "user_id">,
@@ -302,6 +310,15 @@ export class SessionManager {
         secure: state.expectSecure,
         sameSite: "Strict"
       });
+      // Clear any SSO-suppress marker left by a previous logout, so SSO resumes
+      // normally once this password session ends.
+      state.setCookie("mws_no_sso", "", {
+        httpOnly: true,
+        path: state.pathPrefix + "/",
+        expires: new Date(0),
+        secure: state.expectSecure,
+        sameSite: "Strict"
+      });
     }
 
     // NEVER send the session_key! The client already has it!
@@ -341,6 +358,20 @@ export class SessionManager {
         httpOnly: true,
         path: state.pathPrefix + "/",
         expires: new Date(0),
+        secure: state.expectSecure,
+        sameSite: "Strict"
+      });
+    }
+
+    // Under Tailscale SSO, the next request would re-authenticate instantly from the
+    // identity header, making logout a no-op. Set a short-lived suppress marker so
+    // the user actually lands logged out (and can sign in as a different persona);
+    // parseIncomingRequest honours it before SSO. TTL-bounded — SSO resumes after.
+    if (process.env.MWS_TAILSCALE_SSO === "1") {
+      state.setCookie("mws_no_sso", "1", {
+        httpOnly: true,
+        path: state.pathPrefix + "/",
+        expires: new Date(Date.now() + 5 * 60_000),
         secure: state.expectSecure,
         sameSite: "Strict"
       });
