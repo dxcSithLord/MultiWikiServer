@@ -96,6 +96,60 @@ satisfies all of them.
   none, so users are never created role-less (which would deny all default wiki access). An
   **enabled** user must keep at least one role; only a **disabled (locked)** account may have all
   roles removed. See `packages/mws/src/managers/admin-users.ts`.
+
+### Access flow
+
+Non-admin front door (landing) and the admin ACL-grant flows, as implemented:
+
+```mermaid
+sequenceDiagram
+  participant Browser
+  participant AdminHTMX as GET /admin-htmx/
+  participant FFAR as findFirstAccessibleRecipe
+  participant RecipeSave as POST /admin/recipe_create_or_update
+  participant RecipeACL as POST /admin/recipe_acl_update
+  participant BagSave as POST /admin/bag_create_or_update
+  participant BagACL as POST /admin/bag_acl_update
+
+  rect rgba(30, 100, 200, 0.5)
+    note over Browser, FFAR: Non-admin front door (GET / and the catch-all both funnel to /admin-htmx)
+    Browser->>AdminHTMX: GET /admin-htmx/ (non-admin session)
+    AdminHTMX->>FFAR: first recipe where (>=1 bag AND all bags READ-ACL or bag-owner) OR recipe-owner
+    alt wiki accessible
+      FFAR-->>AdminHTMX: recipe_name
+      AdminHTMX-->>Browser: 302 -> {pathPrefix}/wiki/<recipe_name>
+    else no wiki
+      FFAR-->>AdminHTMX: null
+      AdminHTMX-->>Browser: 200 "No wikis assigned yet"
+    end
+  end
+
+  rect rgba(200, 80, 30, 0.5)
+    note over Browser, RecipeACL: Admin saving a Recipe (ACL call only when editing)
+    Browser->>RecipeSave: save recipe (create_only = !isEdit)
+    RecipeSave-->>Browser: 200 OK / error
+    opt isEdit
+      Browser->>RecipeACL: full ACL replace { recipe_name, acl[] }
+      RecipeACL-->>Browser: 200 OK / error
+    end
+  end
+
+  rect rgba(60, 160, 80, 0.5)
+    note over Browser, BagACL: Admin saving a Bag (separate Bags page, ACL call only when editing)
+    Browser->>BagSave: save bag (create_only = !isEdit)
+    BagSave-->>Browser: 200 OK / error
+    opt isEdit
+      Browser->>BagACL: full ACL replace { bag_name, acl[] }
+      BagACL-->>Browser: 200 OK / error
+    end
+  end
+```
+
+> **Least-privilege caveat (current state):** an `isAdmin` user still **bypasses** the content
+> ACL in `getRecipeACL`/`getBagACL`, so admins can read/write every wiki today. Removing that
+> blanket bypass (so admins reach content only via role/ownership) is planned for the next batch —
+> see [`SDP.md`](SDP.md) and [`TODO.md`](TODO.md).
+
 - **Error contract** — `Streamer.catcher` honours `SendError.status`/`reason` instead of
   blanket-500ing, so an unauthorized request surfaces as `403`, not `500`.
 - **Open-redirect guard** — the login `redirect` parameter accepts only same-origin

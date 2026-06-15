@@ -50,6 +50,24 @@ these are polish, not correctness):
       `POST /login/1` (`SessionManager.checkLoginRateLimit`); keyed by username (per-IP is moot
       behind the loopback proxy). Remaining: keep Funnel OFF (standing invariant), consider an
       alert if the listener ever binds non-loopback, and a general per-route rate limit (API4).
+- [ ] **Access-model series (staged PRs off `Alternative-to-react`).** Confirmed decisions:
+      admin content access = least privilege; audit = DB table + admin view; session timeouts =
+      idle 30m / absolute 12h (SSO new-login window 30m).
+  - [x] **Batch 1 — DONE (PR #17 / issue #16):** non-admin landing (`/admin-htmx` → `/wiki/{recipe}`
+        or a friendly "no wikis assigned" 200 page); ACL editor UI in the Recipes/Bags edit modals
+        (wired to `recipe_acl_update` / `bag_acl_update`); `user_create` auto-assigns `USER` and an
+        enabled user must keep ≥1 role. Docs: `security.md` (controls + access-flow diagram),
+        `operations.md` (granting access).
+  - [ ] **Batch 2 — least privilege:** remove the `isAdmin` content bypass in
+        `getRecipeACL`/`getBagACL`; seed `USER`-role ACL on the default wikis + connect the initial
+        admin to `USER`; soft role-count cap (~20; no DB cap exists). **Update `SDP.md` access-control
+        section** + the User→Role→ACL diagram here.
+  - [ ] **Batch 3 — `WIKI_ADMIN` tier:** gate recipe/bag create/delete behind
+        `isAdmin || WIKI_ADMIN || owner` (today any logged-in user can create); document READ =
+        download, WRITE = edit, WIKI_ADMIN = structure/data management.
+  - [ ] **Batch 4 — audit + sessions:** `AuditLog` table + read-only admin view (`audit_list`);
+        emit points across user/role/recipe/bag/login; cookie idle/absolute timeout; SSO login
+        de-dup. **Update `security.md` audit/session section + `SDP.md`.**
 - [ ] Decide FIPS-140-3 scope (recommend: documented non-goal for this deployment) — record it.
 - [ ] Threat model (`docs/security.md`); password-master-key rotation procedure; backup/retention policy.
 - [ ] SBOM / transitive license scan.
