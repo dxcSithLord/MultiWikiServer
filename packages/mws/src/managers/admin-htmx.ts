@@ -197,18 +197,20 @@ export class HtmxAdminManager {
       <body>
         <h1>No wikis assigned yet</h1>
         <p>Your account does not yet have access to any wiki. Please ask an administrator to grant you access.</p>
-        <p><a href="#" id="logout-link">Sign out</a></p>
+        <p><a href="#" id="logout-link" data-path-prefix="${escapeHtml(state.pathPrefix)}">Sign out</a></p>
         <script>
           document.getElementById('logout-link').addEventListener('click', async (e) => {
             e.preventDefault();
+            // pathPrefix is read from a data-* attribute, never inlined into this script
+            // (matches the login page; see security.md "Output encoding").
+            const prefix = e.currentTarget.dataset.pathPrefix || "";
             try {
-              await fetch('${state.pathPrefix}/logout', {
+              await fetch(prefix + '/logout', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'TiddlyWiki' },
-                body: JSON.stringify(undefined)
+                headers: { 'X-Requested-With': 'TiddlyWiki' }
               });
             } catch (err) { /* fall through to redirect */ }
-            window.location.href = '${state.pathPrefix}/login';
+            window.location.href = prefix + '/login';
           });
         </script>
       </body>
