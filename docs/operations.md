@@ -94,9 +94,10 @@ New users get the `USER` role by default. To grant access to a specific wiki:
    then **Save**.
 3. Assign the user that role from **Admin → Users** if they do not already hold it.
 
-A logged-in non-admin who opens the site lands on their first accessible wiki automatically; one
-with no grant yet sees a "no wikis assigned" page until an admin grants access. An **enabled**
-user must keep at least one role — lock (disable) the account first if you need to strip all roles.
+A logged-in non-admin who opens the site lands on their **home page** (`/home`), which lists the
+wikis they can reach; if none are granted yet it shows a "contact an administrator" message until
+an admin grants access. An **enabled** user must keep at least one role — lock (disable) the
+account first if you need to strip all roles.
 
 ## 5. Backups
 
