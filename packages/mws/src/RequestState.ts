@@ -76,11 +76,15 @@ export class StateObject<
     recipe_name: PrismaField<"Recipes", "recipe_name">,
     needWrite: boolean
   ) {
-    const { user_id, isAdmin, roles } = this.user;
+    const { user_id, roles } = this.user;
     // AuthUser carries `roles` ({role_id, role_name}); derive the role_ids the
     // ACL helpers expect. Without this, this.user.role_ids is undefined and the
-    // role-based ACL clause in getWhereACL silently drops, so non-admins can only
+    // role-based ACL clause in getWhereACL silently drops, so users can only
     // reach resources they own and every role grant is ignored.
+    // Least privilege: admins are NOT special-cased here. Content (recipe/bag)
+    // access requires an explicit ACL grant or ownership for everyone, including
+    // ADMIN-role users; admins administer structure via the admin panel, which is
+    // gated separately. (Access-model Batch 2.)
     const role_ids = roles.map(r => r.role_id);
 
     const prisma = this.engine;
@@ -93,11 +97,11 @@ export class StateObject<
         select: { recipe_id: true },
         where: { recipe_name }
       }),
-      isAdmin ? prisma.$queryRaw`SELECT 1` : prisma.recipes.findUnique({
+      prisma.recipes.findUnique({
         select: { recipe_id: true },
         where: { recipe_name, recipe_bags: { every: { bag: { OR: read } } } }
       }),
-      isAdmin ? prisma.$queryRaw`SELECT 1` : needWrite ? prisma.recipes.findUnique({
+      needWrite ? prisma.recipes.findUnique({
         select: { recipe_id: true },
         where: { recipe_name, recipe_bags: { some: { position: 0, bag: { OR: write } } } }
       }) : prisma.$queryRaw`SELECT 2`,
@@ -168,11 +172,12 @@ export class StateObject<
     bag_name: PrismaField<"Bags", "bag_name">,
     needWrite: boolean
   ) {
-    const { user_id, isAdmin, roles } = this.user;
+    const { user_id, roles } = this.user;
     // AuthUser carries `roles` ({role_id, role_name}); derive the role_ids the
     // ACL helpers expect. Without this, this.user.role_ids is undefined and the
-    // role-based ACL clause in getWhereACL silently drops, so non-admins can only
+    // role-based ACL clause in getWhereACL silently drops, so users can only
     // reach resources they own and every role grant is ignored.
+    // Least privilege: admins are NOT special-cased here — see getRecipeACL.
     const role_ids = roles.map(r => r.role_id);
     const prisma = this.engine;
     const read = this.getBagWhereACL({ permission: "READ", user_id, role_ids });
@@ -182,11 +187,11 @@ export class StateObject<
         select: { bag_id: true, owner_id: true },
         where: { bag_name }
       }),
-      isAdmin ? prisma.$queryRaw`SELECT 1` : prisma.bags.findUnique({
+      prisma.bags.findUnique({
         select: { bag_id: true },
         where: { bag_name, OR: read }
       }),
-      isAdmin ? prisma.$queryRaw`SELECT 1` : needWrite ? prisma.bags.findUnique({
+      needWrite ? prisma.bags.findUnique({
         select: { bag_id: true },
         where: { bag_name, OR: write }
       }) : prisma.$queryRaw`SELECT 2`,

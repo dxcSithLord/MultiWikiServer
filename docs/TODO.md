@@ -58,9 +58,12 @@ these are polish, not correctness):
         (wired to `recipe_acl_update` / `bag_acl_update`); `user_create` auto-assigns `USER` and an
         enabled user must keep ≥1 role. Docs: `security.md` (controls + access-flow diagram),
         `operations.md` (granting access).
-  - [ ] **Batch 2 — least privilege:** remove the `isAdmin` content bypass in
-        `getRecipeACL`/`getBagACL`; soft role-count cap (~20; no DB cap exists). **Update `SDP.md`
-        access-control section** + the User→Role→ACL diagram here.
+  - [x] **Batch 2 — least privilege (DONE):** removed the `isAdmin` content bypass in
+        `getRecipeACL`/`getBagACL` (content needs an explicit ACL grant/ownership for everyone,
+        admins included); initial `admin` user gets `ADMIN`+`USER` roles; soft role-count cap
+        (`ROLE_SOFT_CAP = 20`). `SDP.md` §13 + `security.md` updated. **Deliberately declined**
+        filtering the `index_json` admin management listing — the panel stays admin-sees-all so
+        admins can still administer/grant ACLs on every recipe (content ≠ structural admin).
         - [x] Seed `USER → READ` on the four standard reference wikis (`docs`/`mws-docs`/`dev-docs`/
           `tour`) at `init-store` so fresh installs get it out of the box (idempotent, additive-only;
           reuses `REFERENCE_RECIPES`). Live store was already backfilled manually via the ACL editor.

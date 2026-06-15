@@ -96,6 +96,18 @@ satisfies all of them.
   See `packages/mws/src/RequestState.ts`. The grant chain is **User → Role → ACL(role,
   permission) → Bag/Recipe**, where `permission` is hierarchical `READ < WRITE < ADMIN`
   (READ = download / read-only, WRITE = edit on the server, ADMIN = manage that resource).
+- **Admin least privilege for content** — `ADMIN`-role users are **not** exempt from content
+  ACLs. `getRecipeACL`/`getBagACL` previously short-circuited the read/write checks to an
+  always-pass query for admins; that bypass is removed, so reading or writing a wiki's tiddler
+  content requires an explicit ACL grant or ownership for everyone, including admins. An admin's
+  authority is to administer *structure* (recipes, bags, ACLs, users) via the admin panel, which
+  is gated separately and still lists every resource. The initial `admin` account created by
+  `init-store` is given the `USER` role in addition to `ADMIN`, so it reads the default reference
+  wikis through the seeded `USER → READ` grants rather than any bypass. See
+  `packages/mws/src/RequestState.ts` and `packages/mws/src/commands/init-store.ts`.
+- **Role-count soft cap** — `role_create` refuses to create more than `ROLE_SOFT_CAP` (20) roles,
+  a guard against accidental role sprawl (no DB constraint; trivially raised in code). See
+  `packages/mws/src/managers/admin-users.ts`.
 - **Access-management UI** — admins set, change, and remove role→permission grants from the
   **Recipes** and **Bags** edit modals ("Access (roles)" section), wired to the existing
   `recipe_acl_update` / `bag_acl_update` admin keys (full-replace semantics). Previously these
