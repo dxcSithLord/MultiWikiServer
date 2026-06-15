@@ -3,6 +3,7 @@ import { BaseCommand, CommandInfo } from "@tiddlywiki/commander";
 import { resolve } from "path";
 import { randomInt } from "crypto";
 import { Command as LoadWikiFolderCommand } from "./load-wiki-folder";
+import { REFERENCE_RECIPES } from "../services/reference-recipes";
 
 export const info: CommandInfo = {
 	name: "init-store",
@@ -115,6 +116,40 @@ export class Command extends BaseCommand {
 		await runner(resolve(tweditions, "tour"),
 			"tour", "TiddlyWiki Interactive Tour from https://tiddlywiki.com",
 			"tour", "TiddlyWiki Interactive Tour from https://tiddlywiki.com");
+
+		// Seed `USER -> READ` on the standard reference wikis so any USER-role user
+		// can read them from `/home` on a fresh install (live stores were backfilled
+		// manually via the ACL editor). Runs after the recipes are created above.
+		// Additive and idempotent: it only ADDS the grant when that exact
+		// (recipe, USER, READ) row is absent, never deleting or modifying existing
+		// ACLs, so re-running init-store and any operator-set grants are preserved.
+		// The recipe_acl table has no unique constraint, hence the explicit
+		// existence check rather than relying on createMany skipDuplicates.
+		await this.config.$transaction(async (prisma) => {
+			const userRole = await prisma.roles.findUnique({
+				where: { role_name: "USER" },
+				select: { role_id: true }
+			});
+			if (!userRole) return;
+
+			for (const recipe_name of REFERENCE_RECIPES) {
+				const recipe = await prisma.recipes.findUnique({
+					where: { recipe_name },
+					select: { recipe_id: true }
+				});
+				if (!recipe) continue;
+
+				const existing = await prisma.recipeAcl.findFirst({
+					where: { recipe_id: recipe.recipe_id, role_id: userRole.role_id, permission: "READ" },
+					select: { acl_id: true }
+				});
+				if (existing) continue;
+
+				await prisma.recipeAcl.create({
+					data: { recipe_id: recipe.recipe_id, role_id: userRole.role_id, permission: "READ" }
+				});
+			}
+		});
 
 		this.config.setupRequired = false;
 	}
