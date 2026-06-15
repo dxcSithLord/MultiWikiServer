@@ -59,9 +59,11 @@ these are polish, not correctness):
         enabled user must keep ≥1 role. Docs: `security.md` (controls + access-flow diagram),
         `operations.md` (granting access).
   - [ ] **Batch 2 — least privilege:** remove the `isAdmin` content bypass in
-        `getRecipeACL`/`getBagACL`; seed `USER`-role ACL on the default wikis + connect the initial
-        admin to `USER`; soft role-count cap (~20; no DB cap exists). **Update `SDP.md` access-control
-        section** + the User→Role→ACL diagram here.
+        `getRecipeACL`/`getBagACL`; soft role-count cap (~20; no DB cap exists). **Update `SDP.md`
+        access-control section** + the User→Role→ACL diagram here.
+        - [x] Seed `USER → READ` on the four standard reference wikis (`docs`/`mws-docs`/`dev-docs`/
+          `tour`) at `init-store` so fresh installs get it out of the box (idempotent, additive-only;
+          reuses `REFERENCE_RECIPES`). Live store was already backfilled manually via the ACL editor.
   - [ ] **Batch 3 — `WIKI_ADMIN` tier:** gate recipe/bag create/delete behind
         `isAdmin || WIKI_ADMIN || owner` (today any logged-in user can create); document READ =
         download, WRITE = edit, WIKI_ADMIN = structure/data management.
