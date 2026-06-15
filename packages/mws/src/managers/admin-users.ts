@@ -33,6 +33,8 @@ function handlePrismaUniqueConstraintError(error: unknown): never {
         throw "Email address is already in use";
       } else if (target.includes('username')) {
         throw "Username is already taken";
+      } else if (target.includes('tailscale_login')) {
+        throw "That Tailscale login is already mapped to another user";
       }
     }
     throw "A user with these details already exists";

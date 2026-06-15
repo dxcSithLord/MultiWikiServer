@@ -103,4 +103,27 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
     process.env.MWS_TAILSCALE_SSO = "1";
     expect((await resolve(null, alice)).isLoggedIn).toBe(false);
   });
+
+  it("prefers a valid session cookie over the SSO header", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    const streamer = {
+      cookies: { getAll: () => ["sess-1"] },
+      headers: { "tailscale-user-login": "alice@example.com" },
+    } as any;
+    const config = {
+      engine: {
+        sessions: {
+          findFirst: async () => ({
+            session_id: "sess-1",
+            user: { user_id: "u-cookie", username: "cookieuser", nickname: null, disabled: false, roles: [] },
+          }),
+        },
+        users: { findUnique: async () => alice }, // would match, but the cookie must win
+      },
+    } as any;
+    const u = await SessionManager.parseIncomingRequest(streamer, config);
+    expect(u.isLoggedIn).toBe(true);
+    expect(u.username).toBe("cookieuser");
+    expect(u.sessionId).toBe("sess-1");
+  });
 });
