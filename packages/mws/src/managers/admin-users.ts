@@ -97,6 +97,7 @@ export class UserManager {
         email: true,
         nickname: true,
         disabled: true,
+        tailscale_login: true,
         roles: true,
         last_login: true,
         created_at: true,
@@ -127,6 +128,7 @@ export class UserManager {
         email: true,
         nickname: true,
         disabled: true,
+        tailscale_login: true,
         roles: true,
         last_login: true,
         created_at: true,
@@ -140,6 +142,7 @@ export class UserManager {
     username: z.string(),
     email: z.string().optional(),
     nickname: z.string().optional(),
+    tailscale_login: z.string().optional(),
     role_ids: z.prismaField("Roles", "role_id", "string", false).array(),
   }), async (state, prisma) => {
     const { username, role_ids } = state.data;
@@ -150,10 +153,12 @@ export class UserManager {
     // stable placeholder from the (unique) username when none is supplied.
     const email = state.data.email?.trim() || `${username}@local`;
     const nickname = state.data.nickname?.trim() || null;
+    // tailscale_login is unique; blank must be null (not "") so multiple unset users don't collide.
+    const tailscale_login = state.data.tailscale_login?.trim() || null;
 
     try {
       const user = await prisma.users.create({
-        data: { username, email, nickname, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
+        data: { username, email, nickname, tailscale_login, password: "", roles: { connect: role_ids.map(role_id => ({ role_id })) } },
         select: { user_id: true, created_at: true }
       });
 
@@ -168,10 +173,13 @@ export class UserManager {
     username: z.prismaField("Users", "username", "string"),
     email: z.prismaField("Users", "email", "string").optional(),
     nickname: z.string().optional(),
+    tailscale_login: z.string().optional(),
     role_ids: z.prismaField("Roles", "role_id", "string").array(),
   }), async (state, prisma) => {
     const { user_id, username, role_ids } = state.data;
     const nickname = state.data.nickname?.trim() || null;
+    // Blank clears the SSO mapping (null, not "" — the column is unique).
+    const tailscale_login = state.data.tailscale_login?.trim() || null;
     // Email is optional (matching user_create + the UI): a blank/omitted value leaves the
     // existing email unchanged, rather than forcing one or clobbering it with a placeholder.
     const email = state.data.email?.trim();
@@ -200,7 +208,7 @@ export class UserManager {
     try {
       await prisma.users.update({
         where: { user_id },
-        data: { username, ...(email ? { email } : {}), nickname, roles: { set: role_ids.map(role_id => ({ role_id })) } }
+        data: { username, ...(email ? { email } : {}), nickname, tailscale_login, roles: { set: role_ids.map(role_id => ({ role_id })) } }
       });
     } catch (error) {
       handlePrismaUniqueConstraintError(error);

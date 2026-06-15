@@ -101,3 +101,18 @@ to reconstruct the running site.
 If you push from the deployment host, the opt-in `dev/hooks/pre-push` gate runs build, tests,
 the cutover/openapi skills, an audit, and the headless admin smoke before each push. See
 [`testing.md`](testing.md). Use `SKIP_SMOKE=1 git push` on hosts without Chromium.
+
+## 7. Optional: passwordless Tailscale SSO
+
+Family members can be logged in automatically by their Tailscale identity — no MWS password:
+
+1. **Map each member** — set their **Tailscale login** (the IdP login Tailscale shows, e.g.
+   `alice@gmail.com`) in the admin Users form (or `user_update`). It's matched against the
+   `Tailscale-User-Login` header that Serve injects.
+2. **Enable it** — add `Environment=MWS_TAILSCALE_SSO=1` to the systemd unit and restart.
+3. **Requirements (security-critical):** MWS must stay bound to **loopback**, fronted by
+   **Tailscale Serve**, with **Funnel OFF**. Serve strips spoofed `Tailscale-*` headers and
+   injects the verified identity; Funnel does not — so **never enable Funnel while SSO is on**.
+
+Unmapped identities are denied (no auto-provision); a disabled account is rejected; and password
+login still works (admin/CLI/non-tailnet). See [`security.md`](security.md) for the trust model.

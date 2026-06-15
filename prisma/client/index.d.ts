@@ -11812,6 +11812,7 @@ export namespace Prisma {
     email: string | null
     nickname: string | null
     disabled: boolean | null
+    tailscale_login: string | null
     password: string | null
     created_at: Date | null
     last_login: Date | null
@@ -11823,6 +11824,7 @@ export namespace Prisma {
     email: string | null
     nickname: string | null
     disabled: boolean | null
+    tailscale_login: string | null
     password: string | null
     created_at: Date | null
     last_login: Date | null
@@ -11834,6 +11836,7 @@ export namespace Prisma {
     email: number
     nickname: number
     disabled: number
+    tailscale_login: number
     password: number
     created_at: number
     last_login: number
@@ -11847,6 +11850,7 @@ export namespace Prisma {
     email?: true
     nickname?: true
     disabled?: true
+    tailscale_login?: true
     password?: true
     created_at?: true
     last_login?: true
@@ -11858,6 +11862,7 @@ export namespace Prisma {
     email?: true
     nickname?: true
     disabled?: true
+    tailscale_login?: true
     password?: true
     created_at?: true
     last_login?: true
@@ -11869,6 +11874,7 @@ export namespace Prisma {
     email?: true
     nickname?: true
     disabled?: true
+    tailscale_login?: true
     password?: true
     created_at?: true
     last_login?: true
@@ -11953,6 +11959,7 @@ export namespace Prisma {
     email: string
     nickname: string | null
     disabled: boolean
+    tailscale_login: string | null
     password: string
     created_at: Date
     last_login: Date | null
@@ -11981,6 +11988,7 @@ export namespace Prisma {
     email?: boolean
     nickname?: boolean
     disabled?: boolean
+    tailscale_login?: boolean
     password?: boolean
     created_at?: boolean
     last_login?: boolean
@@ -11995,6 +12003,7 @@ export namespace Prisma {
     email?: boolean
     nickname?: boolean
     disabled?: boolean
+    tailscale_login?: boolean
     password?: boolean
     created_at?: boolean
     last_login?: boolean
@@ -12006,6 +12015,7 @@ export namespace Prisma {
     email?: boolean
     nickname?: boolean
     disabled?: boolean
+    tailscale_login?: boolean
     password?: boolean
     created_at?: boolean
     last_login?: boolean
@@ -12017,12 +12027,13 @@ export namespace Prisma {
     email?: boolean
     nickname?: boolean
     disabled?: boolean
+    tailscale_login?: boolean
     password?: boolean
     created_at?: boolean
     last_login?: boolean
   }
 
-  export type UsersOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"user_id" | "username" | "email" | "nickname" | "disabled" | "password" | "created_at" | "last_login", ExtArgs["result"]["users"]>
+  export type UsersOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"user_id" | "username" | "email" | "nickname" | "disabled" | "tailscale_login" | "password" | "created_at" | "last_login", ExtArgs["result"]["users"]>
   export type UsersInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     sessions?: boolean | Users$sessionsArgs<ExtArgs>
     roles?: boolean | Users$rolesArgs<ExtArgs>
@@ -12043,6 +12054,7 @@ export namespace Prisma {
       email: string
       nickname: string | null
       disabled: boolean
+      tailscale_login: string | null
       password: string
       created_at: Date
       last_login: Date | null
@@ -12476,6 +12488,7 @@ export namespace Prisma {
     readonly email: FieldRef<"Users", 'String'>
     readonly nickname: FieldRef<"Users", 'String'>
     readonly disabled: FieldRef<"Users", 'Boolean'>
+    readonly tailscale_login: FieldRef<"Users", 'String'>
     readonly password: FieldRef<"Users", 'String'>
     readonly created_at: FieldRef<"Users", 'DateTime'>
     readonly last_login: FieldRef<"Users", 'DateTime'>
@@ -14097,6 +14110,7 @@ export namespace Prisma {
     email: 'email',
     nickname: 'nickname',
     disabled: 'disabled',
+    tailscale_login: 'tailscale_login',
     password: 'password',
     created_at: 'created_at',
     last_login: 'last_login'
@@ -14715,6 +14729,7 @@ export namespace Prisma {
     email?: StringFilter<"Users"> | string
     nickname?: StringNullableFilter<"Users"> | string | null
     disabled?: BoolFilter<"Users"> | boolean
+    tailscale_login?: StringNullableFilter<"Users"> | string | null
     password?: StringFilter<"Users"> | string
     created_at?: DateTimeFilter<"Users"> | Date | string
     last_login?: DateTimeNullableFilter<"Users"> | Date | string | null
@@ -14728,6 +14743,7 @@ export namespace Prisma {
     email?: SortOrder
     nickname?: SortOrderInput | SortOrder
     disabled?: SortOrder
+    tailscale_login?: SortOrderInput | SortOrder
     password?: SortOrder
     created_at?: SortOrder
     last_login?: SortOrderInput | SortOrder
@@ -14739,6 +14755,7 @@ export namespace Prisma {
     user_id?: string
     username?: string
     email?: string
+    tailscale_login?: string
     AND?: UsersWhereInput | UsersWhereInput[]
     OR?: UsersWhereInput[]
     NOT?: UsersWhereInput | UsersWhereInput[]
@@ -14749,7 +14766,7 @@ export namespace Prisma {
     last_login?: DateTimeNullableFilter<"Users"> | Date | string | null
     sessions?: SessionsListRelationFilter
     roles?: RolesListRelationFilter
-  }, "user_id" | "username" | "email">
+  }, "user_id" | "username" | "email" | "tailscale_login">
 
   export type UsersOrderByWithAggregationInput = {
     user_id?: SortOrder
@@ -14757,6 +14774,7 @@ export namespace Prisma {
     email?: SortOrder
     nickname?: SortOrderInput | SortOrder
     disabled?: SortOrder
+    tailscale_login?: SortOrderInput | SortOrder
     password?: SortOrder
     created_at?: SortOrder
     last_login?: SortOrderInput | SortOrder
@@ -14774,6 +14792,7 @@ export namespace Prisma {
     email?: StringWithAggregatesFilter<"Users"> | string
     nickname?: StringNullableWithAggregatesFilter<"Users"> | string | null
     disabled?: BoolWithAggregatesFilter<"Users"> | boolean
+    tailscale_login?: StringNullableWithAggregatesFilter<"Users"> | string | null
     password?: StringWithAggregatesFilter<"Users"> | string
     created_at?: DateTimeWithAggregatesFilter<"Users"> | Date | string
     last_login?: DateTimeNullableWithAggregatesFilter<"Users"> | Date | string | null
@@ -15318,6 +15337,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -15331,6 +15351,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -15344,6 +15365,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -15357,6 +15379,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -15370,6 +15393,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -15381,6 +15405,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -15392,6 +15417,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -15973,6 +15999,7 @@ export namespace Prisma {
     email?: SortOrder
     nickname?: SortOrder
     disabled?: SortOrder
+    tailscale_login?: SortOrder
     password?: SortOrder
     created_at?: SortOrder
     last_login?: SortOrder
@@ -15984,6 +16011,7 @@ export namespace Prisma {
     email?: SortOrder
     nickname?: SortOrder
     disabled?: SortOrder
+    tailscale_login?: SortOrder
     password?: SortOrder
     created_at?: SortOrder
     last_login?: SortOrder
@@ -15995,6 +16023,7 @@ export namespace Prisma {
     email?: SortOrder
     nickname?: SortOrder
     disabled?: SortOrder
+    tailscale_login?: SortOrder
     password?: SortOrder
     created_at?: SortOrder
     last_login?: SortOrder
@@ -17389,6 +17418,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -17401,6 +17431,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -17437,6 +17468,7 @@ export namespace Prisma {
     email?: StringFilter<"Users"> | string
     nickname?: StringNullableFilter<"Users"> | string | null
     disabled?: BoolFilter<"Users"> | boolean
+    tailscale_login?: StringNullableFilter<"Users"> | string | null
     password?: StringFilter<"Users"> | string
     created_at?: DateTimeFilter<"Users"> | Date | string
     last_login?: DateTimeNullableFilter<"Users"> | Date | string | null
@@ -17540,6 +17572,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -17552,6 +17585,7 @@ export namespace Prisma {
     email: string
     nickname?: string | null
     disabled?: boolean
+    tailscale_login?: string | null
     password: string
     created_at?: Date | string
     last_login?: Date | string | null
@@ -17580,6 +17614,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -17592,6 +17627,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -17756,6 +17792,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -17768,6 +17805,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -17780,6 +17818,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     nickname?: NullableStringFieldUpdateOperationsInput | string | null
     disabled?: BoolFieldUpdateOperationsInput | boolean
+    tailscale_login?: NullableStringFieldUpdateOperationsInput | string | null
     password?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     last_login?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null

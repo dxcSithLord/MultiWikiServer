@@ -74,6 +74,11 @@
           </div>
 
           <div class="mws-form-group">
+            <label for="tailscale_login">Tailscale login <span class="mws-text-muted">(optional — for passwordless SSO, e.g. alice@gmail.com)</span></label>
+            <input type="text" id="tailscale_login" name="tailscale_login" class="mws-form-input" autocomplete="off">
+          </div>
+
+          <div class="mws-form-group">
             <label for="roles">Roles (Hold Ctrl/Cmd for multiple)</label>
             <select id="roles" name="role_ids" class="mws-form-select" multiple size="3">
               <!-- Populated dynamically -->
@@ -291,6 +296,7 @@
         document.getElementById('username').value = data.user.username;
         document.getElementById('email').value = data.user.email;
         document.getElementById('nickname').value = data.user.nickname || '';
+        document.getElementById('tailscale_login').value = data.user.tailscale_login || '';
 
         allRoles = data.allRoles;
         populateRoles(data.user.roles.map(r => r.role_id));
@@ -399,15 +405,16 @@
         const username = formData.get('username');
         const email = formData.get('email');
         const nickname = formData.get('nickname');
+        const tailscale_login = formData.get('tailscale_login');
         const role_ids = formData.getAll('role_ids');
 
         if (userId) {
           // Update existing user
-          await apiRequest('user_update', { user_id: userId, username, email, nickname, role_ids });
+          await apiRequest('user_update', { user_id: userId, username, email, nickname, tailscale_login, role_ids });
           showToast('User updated successfully', 'success');
         } else {
           // Create new user
-          await apiRequest('user_create', { username, email, nickname, role_ids });
+          await apiRequest('user_create', { username, email, nickname, tailscale_login, role_ids });
           showToast('User created successfully', 'success');
         }
 

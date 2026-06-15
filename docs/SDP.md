@@ -61,6 +61,13 @@ this server, not a part of it.
     (password must be unique-per-product or user-defined, and not guessable) without claiming
     formal conformity — the Act binds products placed on the UK market, not a self-hosted fork.
     See `docs/security.md`. The headless smoke uses `reset-password` to set a known credential.
+12. **Account-security series (batches 1-3).** (1) reversible account lock/disable, optional
+    email, user nickname (shown in wiki attribution); (2) in-memory per-username login
+    rate-limiting on `/login/1` (hard-capped LRU map); (3) **opt-in passwordless Tailscale SSO**
+    (`MWS_TAILSCALE_SSO=1`): per-request auth from the `Tailscale-User-Login` header mapped to a
+    user's `tailscale_login`, stateless, deny-unless-mapped, roles as mapped — safe only because
+    MWS is loopback-bound + behind Tailscale Serve (strips spoofed headers) + Funnel off. Password
+    login remains the fallback. See `docs/security.md` / `docs/operations.md` §7.
 
 ## 3. Tools & skills
 

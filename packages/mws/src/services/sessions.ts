@@ -4,6 +4,13 @@ import { createHash, randomBytes } from "node:crypto";
 import { ServerState } from "../ServerState";
 import { serverEvents } from "@tiddlywiki/events";
 
+declare module "@tiddlywiki/server" {
+  interface IncomingHttpHeaders {
+    /** Identity header injected by Tailscale Serve for proxied tailnet requests (SSO). */
+    'tailscale-user-login'?: string;
+  }
+}
+
 
 export interface AuthUser {
   /** User ID. 0 if the user is not logged in. */
@@ -175,7 +182,12 @@ export class SessionManager {
       sessionId: session.session_id,
       isLoggedIn: true,
     };
-    else return {
+
+    // No valid session cookie — try opt-in Tailscale SSO before treating as anonymous.
+    const ssoUser = await SessionManager.resolveTailscaleSSO(streamer, config);
+    if (ssoUser) return ssoUser;
+
+    return {
       user_id: "" as PrismaField<"Users", "user_id">,
       username: "(anon)" as PrismaField<"Users", "username">,
       nickname: null,
@@ -183,6 +195,41 @@ export class SessionManager {
       roles: [],
       sessionId: undefined,
       isLoggedIn: false,
+    };
+  }
+
+  /**
+   * Opt-in passwordless auth from Tailscale's `Tailscale-User-Login` identity header.
+   *
+   * SAFE ONLY because MWS binds loopback and Tailscale Serve (a) strips any client-supplied
+   * `Tailscale-*` headers and (b) injects the verified tailnet identity. Funnel does NOT inject
+   * it, so public requests carry no header and fall through to password auth. Enabling
+   * `MWS_TAILSCALE_SSO=1` is the operator's attestation that this setup holds (loopback bind +
+   * Tailscale Serve + Funnel off).
+   *
+   * Stateless (no session row): the identity is re-validated from the header on every request.
+   * Deny-unless-mapped (no auto-provision); disabled users are rejected; roles are as mapped.
+   */
+  private static async resolveTailscaleSSO(streamer: Streamer, config: ServerState): Promise<AuthUser | null> {
+    if (process.env.MWS_TAILSCALE_SSO !== "1") return null;
+
+    const login = streamer.headers["tailscale-user-login"];
+    if (typeof login !== "string" || !login) return null;
+
+    const u = await config.engine.users.findUnique({
+      where: { tailscale_login: login },
+      select: { user_id: true, username: true, nickname: true, disabled: true, roles: { select: { role_id: true, role_name: true } } }
+    });
+    if (!u || u.disabled) return null;
+
+    return {
+      user_id: u.user_id,
+      username: u.username,
+      nickname: u.nickname,
+      isAdmin: u.roles.some(e => e.role_name === "ADMIN"),
+      roles: u.roles.map(e => ({ role_id: e.role_id, role_name: e.role_name })),
+      sessionId: undefined,
+      isLoggedIn: true,
     };
   }
 
@@ -281,7 +328,8 @@ export class SessionManager {
       return null;
     }
 
-    if (state.user.isLoggedIn) {
+    // SSO users are authenticated per-request from the header and have no session row.
+    if (state.user.isLoggedIn && state.user.sessionId) {
       await prisma.sessions.delete({ where: { session_id: state.user.sessionId } });
     }
     var cookies = state.headers.cookie ? state.headers.cookie.split(";") : [];
