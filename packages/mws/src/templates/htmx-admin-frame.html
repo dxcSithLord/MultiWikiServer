@@ -113,6 +113,15 @@
       document.getElementById('toast').classList.remove('mws-show');
     }
 
+    // The frame script is wrapped in an IIFE (above) to avoid top-level const
+    // collisions with injected page fragments. That also hides these helpers from
+    // those fragments, so the Recipes/Bags pages calling showToast() threw
+    // "showToast is not defined" (aborting save → modal never closed). Expose them
+    // on window so every injected page can use the shared toast. (The Users page
+    // defines its own, which is why it was unaffected.)
+    window.showToast = window.showToast || showToast;
+    window.hideToast = window.hideToast || hideToast;
+
     // Initialize on DOM ready
     document.addEventListener('DOMContentLoaded', async () => {
       // Menu toggle
