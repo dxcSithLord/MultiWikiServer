@@ -30,9 +30,17 @@ serverEvents.on("mws.routes", (root: ServerRoute, config: ServerState) => {
     path: /^\/$/,
     method: ["GET"],
   }, async (state) => {
+    // Dispatch the front door by role: anonymous → login; admin → the admin UI;
+    // a normal user → their home page (the wikis they can reach + logout). The
+    // in-wiki "🏠 MWS home" button points here, so this is where it lands.
+    const location = !state.user.isLoggedIn
+      ? `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.pathPrefix + "/")}`
+      : state.user.isAdmin
+        ? `${state.pathPrefix}/admin-htmx`
+        : `${state.pathPrefix}/home`;
     return state.sendBuffer(302, {
-      "location": `${state.pathPrefix}/admin-htmx`,
-    }, Buffer.from("Redirecting to admin...", "utf-8"));
+      "location": location,
+    }, Buffer.from("Redirecting...", "utf-8"));
   });
 });
 

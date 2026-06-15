@@ -94,9 +94,10 @@ New users get the `USER` role by default. To grant access to a specific wiki:
    then **Save**.
 3. Assign the user that role from **Admin → Users** if they do not already hold it.
 
-A logged-in non-admin who opens the site lands on their first accessible wiki automatically; one
-with no grant yet sees a "no wikis assigned" page until an admin grants access. An **enabled**
-user must keep at least one role — lock (disable) the account first if you need to strip all roles.
+A logged-in non-admin who opens the site lands on their **home page** (`/home`), which lists the
+wikis they can reach; if none are granted yet it shows a "contact an administrator" message until
+an admin grants access. An **enabled** user must keep at least one role — lock (disable) the
+account first if you need to strip all roles.
 
 ## 5. Backups
 
@@ -132,3 +133,15 @@ Family members can be logged in automatically by their Tailscale identity — no
 
 Unmapped identities are denied (no auto-provision); a disabled account is rejected; and password
 login still works (admin/CLI/non-tailnet). See [`security.md`](security.md) for the trust model.
+
+### Signing out / switching persona under SSO
+
+Because SSO authenticates from the identity header on every request, a plain logout would
+re-authenticate instantly. So **logout** (the button on `/home` or the admin frame) sets a
+short-lived `mws_no_sso` marker that suppresses SSO for ~5 minutes, landing you on `/login`:
+
+- To **sign in as a different persona**, enter that user's username/password on `/login` — the
+  password session takes precedence and the marker is cleared.
+- To **come back as yourself immediately** (skip the wait), click **"Log in with Tailscale (SSO)"**
+  on the login page (`GET /resume-sso`) — it clears the marker and SSO re-resolves.
+- Otherwise SSO simply resumes automatically once the marker expires.

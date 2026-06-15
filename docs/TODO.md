@@ -68,6 +68,14 @@ these are polish, not correctness):
   - [ ] **Batch 4 — audit + sessions:** `AuditLog` table + read-only admin view (`audit_list`);
         emit points across user/role/recipe/bag/login; cookie idle/absolute timeout; SSO login
         de-dup. **Update `security.md` audit/session section + `SDP.md`.**
+  - [x] **Batch 5 — DONE (PR #19 / issue #18):** user home page (`/home`) listing the wikis a
+        user can reach (reference wikis open in a new tab), with a working logout and a manage-wikis
+        link when permitted; root dispatch by role (anon→login, admin→admin, user→/home); logout
+        sets a short-lived `mws_no_sso` marker honoured before SSO so logout/persona-switch works,
+        with a `/resume-sso` short-cut + login-page button. Docs: `security.md`, `operations.md`.
+  - [ ] **Batch 6 — generic in-wiki home button:** inject the `🏠 MWS home` button server-side
+        into served wikis (skip reference wikis); drop the hand-coded link from the moving-house-app
+        seed (separate repo). Follows Batch 5.
 - [ ] Decide FIPS-140-3 scope (recommend: documented non-goal for this deployment) — record it.
 - [ ] Threat model (`docs/security.md`); password-master-key rotation procedure; backup/retention policy.
 - [ ] SBOM / transitive license scan.

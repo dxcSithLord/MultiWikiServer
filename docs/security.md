@@ -78,6 +78,18 @@ satisfies all of them.
   client-supplied `Tailscale-*` headers and injects the verified identity), and **Funnel is OFF**
   (public requests carry no header → fall through to password). **Deny-unless-mapped** (no
   auto-provision); disabled users are rejected. See `SessionManager.resolveTailscaleSSO`.
+- **Logout under SSO (suppress marker)** — because SSO is stateless, clearing the session cookie
+  alone would let the very next request re-authenticate from the identity header, so logout could
+  never "stick." Logout therefore sets a short-lived (~5 min) `mws_no_sso` cookie (HttpOnly,
+  SameSite=Strict, Secure under TLS) that `parseIncomingRequest` honours **before** SSO, landing
+  the user on `/login` so they can sign in as a different persona. A valid session cookie still
+  takes precedence (password login wins), and the marker is cleared on login. It can only *force*
+  password login (more friction, never less) and is TTL-bounded; `GET /resume-sso` clears it to
+  resume SSO immediately. See `services/sessions.ts`.
+- **User home page (`/home`)** — a logged-in non-admin lands on a standalone page listing the wikis
+  they may READ (reference/doc wikis open in a new tab), with a logout control and — when permitted
+  — a manage-wikis link; an admin keeps the admin UI. Replaces the earlier dead-end redirect and
+  the no-wiki page. See `managers/admin-htmx.ts`.
 - **Authorization (ACL)** — role-based read/write on bags and recipes. A high-severity fix
   corrected `getRecipeACL`/`getBagACL` to read `roles.map(r => r.role_id)` (the code previously
   read an always-`undefined` `role_ids`, so non-admins could only reach resources they owned).

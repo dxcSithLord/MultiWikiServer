@@ -660,15 +660,48 @@ paths:
   /:
     get:
       tags: [Admin UI]
-      summary: Front door — redirect to the HTMX admin
+      summary: Front door — role-based redirect
       description: |
-        Exact `/` redirects (`302`) to `/admin-htmx`. The unmatched-GET fallback
-        (`GET /*`, regex `^/.*` in `managers/index.ts`) performs the same redirect, so any
-        otherwise-unhandled GET path lands on the admin home (which gates auth).
+        Exact `/` redirects (`302`) by role: anonymous → `/login`; admin → `/admin-htmx`;
+        a normal user → `/home` (their wiki list). The unmatched-GET fallback
+        (`GET /*`, regex `^/.*` in `managers/index.ts`) redirects to `/admin-htmx`, which
+        itself routes non-admins on to `/home`.
       security: []
       responses:
         '302':
-          description: Redirect to `/admin-htmx`.
+          description: Redirect to `/login`, `/admin-htmx`, or `/home` per role.
+          headers:
+            Location: { schema: { type: string } }
+
+  /home:
+    get:
+      tags: [Admin UI]
+      summary: User home page — the wikis you can reach
+      description: |
+        Standalone page (not the admin frame) listing the wikis the signed-in user can READ,
+        with a logout control and — when permitted — a "Manage wikis" link. Reference/doc wikis
+        open in a new tab; task wikis in the same tab. If the user has no wiki, shows a
+        "contact an administrator" message. Redirects to `/login` if unauthenticated.
+      responses:
+        '200':
+          description: User home HTML page.
+          content:
+            text/html:
+              schema: { type: string }
+        '302': { description: Redirect to `/login`. }
+
+  /resume-sso:
+    get:
+      tags: [Admin UI]
+      summary: Resume Tailscale SSO after logout
+      description: |
+        Clears the short-lived `mws_no_sso` suppress marker that logout sets, then `302`s to
+        `/` so the next request re-authenticates via Tailscale SSO. Offered as a "Log in with
+        Tailscale" short-cut on the login page when SSO is enabled.
+      security: []
+      responses:
+        '302':
+          description: Redirect to `/` (SSO re-resolves).
           headers:
             Location: { schema: { type: string } }
 
@@ -700,15 +733,14 @@ paths:
     get:
       tags: [Admin UI]
       summary: HTMX admin home (Recipes)
-      description: Default admin page. Redirects to `/login` if unauthenticated; `403` if not an admin.
+      description: Default admin page. Redirects to `/login` if unauthenticated; to `/home` if not an admin.
       responses:
         '200':
           description: Admin Recipes page (HTML).
           content:
             text/html:
               schema: { type: string }
-        '302': { description: Redirect to `/login`. }
-        '403': { $ref: '#/components/responses/HtmlError' }
+        '302': { description: Redirect to `/login` (unauthenticated) or `/home` (non-admin). }
 
   /admin-htmx/bags:
     get:
