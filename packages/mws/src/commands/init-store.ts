@@ -56,8 +56,15 @@ export class Command extends BaseCommand {
 					]
 				});
 
+				// Connect the initial admin to BOTH ADMIN and USER. The USER role grants
+				// read access to the default reference wikis via the seeded `USER -> READ`
+				// ACLs (see the seeding block below), so the admin can read them without
+				// any admin-specific content bypass (removed in access-model Batch 2).
 				const user = await prisma.users.create({
-					data: { username: "admin", email: "", password: "", roles: { connect: { role_name: "ADMIN" } } },
+					data: {
+						username: "admin", email: "", password: "",
+						roles: { connect: [{ role_name: "ADMIN" }, { role_name: "USER" }] }
+					},
 					select: { user_id: true }
 				});
 

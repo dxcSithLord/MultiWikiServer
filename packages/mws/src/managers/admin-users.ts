@@ -23,6 +23,13 @@ export const UserKeyMap: RouterKeyMap<UserManager, true> = {
 export type UserManagerMap = RouterRouteMap<UserManager>;
 
 /**
+ * Soft cap on the number of roles. There is no DB constraint; this is a guard
+ * against accidental role sprawl (the ACL model is hierarchical and a handful of
+ * roles is expected). Raise this constant if a deployment legitimately needs more.
+ */
+const ROLE_SOFT_CAP = 20;
+
+/**
  * Handle Prisma unique constraint violations and convert to user-friendly error messages
  */
 function handlePrismaUniqueConstraintError(error: unknown): never {
@@ -381,6 +388,10 @@ export class UserManager {
     const { role_name, description } = state.data;
 
     state.okAdmin();
+
+    const roleCount = await prisma.roles.count();
+    if (roleCount >= ROLE_SOFT_CAP)
+      throw `Role limit reached (${ROLE_SOFT_CAP}). Delete an unused role or raise ROLE_SOFT_CAP.`;
 
     return await prisma.roles.create({
       data: { role_name, description }

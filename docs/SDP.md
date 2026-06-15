@@ -68,6 +68,17 @@ this server, not a part of it.
     user's `tailscale_login`, stateless, deny-unless-mapped, roles as mapped — safe only because
     MWS is loopback-bound + behind Tailscale Serve (strips spoofed headers) + Funnel off. Password
     login remains the fallback. See `docs/security.md` / `docs/operations.md` §7.
+13. **Access-model series.** Role/ACL/landing rework delivered as staged batches. Highlights:
+    non-admin landing + ACL-editor UI (Batch 1); user home page `/home` + role-based root dispatch
+    (Batch 5); idempotent `USER → READ` seeding of the four reference wikis at `init-store`. **Batch 2
+    — admin least privilege for content:** the `isAdmin` short-circuit in `getRecipeACL`/`getBagACL`
+    is removed, so reading/writing tiddler content requires an explicit ACL grant or ownership for
+    **everyone, including admins** (admins still administer structure via the admin panel, which
+    remains admin-sees-all). The grant chain is unchanged — **User → Role → ACL(role, permission)
+    → Bag/Recipe**, `READ < WRITE < ADMIN` — but `ADMIN` membership no longer implies content
+    access. The initial `admin` user is created with both `ADMIN` and `USER` roles so it reads the
+    default wikis via the seeded grants; `role_create` enforces a soft cap of 20 roles. See
+    `docs/security.md` and `packages/mws/src/RequestState.ts`.
 
 ## 3. Tools & skills
 
