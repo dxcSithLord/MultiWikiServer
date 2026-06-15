@@ -921,6 +921,7 @@ components:
         username: { type: string }
         email: { type: string }
         nickname: { type: [string, 'null'] }
+        tailscale_login: { type: [string, 'null'], description: "Tailscale identity (Tailscale-User-Login) mapped to this user for passwordless SSO when MWS_TAILSCALE_SSO=1." }
         disabled: { type: boolean }
         roles: { type: array, items: { $ref: '#/components/schemas/Role' } }
         last_login: { type: [string, 'null'], format: date-time }
@@ -1012,6 +1013,7 @@ components:
         username: { type: string }
         email: { type: string, description: "Optional; a unique <username>@local placeholder is derived when omitted." }
         nickname: { type: [string, 'null'] }
+        tailscale_login: { type: [string, 'null'], description: "Tailscale identity (Tailscale-User-Login) mapped to this user for passwordless SSO when MWS_TAILSCALE_SSO=1." }
         role_ids: { type: array, items: { type: string } }
     UserUpdateRequest:
       type: object
@@ -1021,6 +1023,7 @@ components:
         username: { type: string }
         email: { type: string }
         nickname: { type: [string, 'null'] }
+        tailscale_login: { type: [string, 'null'], description: "Tailscale identity (Tailscale-User-Login) mapped to this user for passwordless SSO when MWS_TAILSCALE_SSO=1." }
         role_ids: { type: array, items: { type: string } }
     UserDeleteRequest:
       type: object

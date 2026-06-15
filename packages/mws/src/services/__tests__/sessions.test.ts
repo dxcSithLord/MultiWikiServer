@@ -3,7 +3,7 @@
  * Time is injected via the `now` argument so the tests are deterministic (no fake timers).
  * Each test uses a unique username to avoid sharing the static in-memory map.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { SessionManager } from "../sessions";
 
 const MAX = SessionManager.LOGIN_MAX_ATTEMPTS;
@@ -49,5 +49,81 @@ describe("SessionManager.checkLoginRateLimit", () => {
       SessionManager.checkLoginRateLimit("spray-" + i, 1_000 + i);
     }
     expect(SessionManager.loginTrackedCount).toBeLessThanOrEqual(cap);
+  });
+});
+
+describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
+  const ORIG = process.env.MWS_TAILSCALE_SSO;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.MWS_TAILSCALE_SSO;
+    else process.env.MWS_TAILSCALE_SSO = ORIG;
+  });
+
+  const alice = {
+    tailscale_login: "alice@example.com", user_id: "u1", username: "alice",
+    nickname: null, disabled: false, roles: [{ role_id: "r1", role_name: "USER" }],
+  };
+  // No session cookie; optional Tailscale identity header.
+  const mkStreamer = (header: string | null) =>
+    ({ cookies: { getAll: () => [] }, headers: header ? { "tailscale-user-login": header } : {} }) as any;
+  // engine: no session; users.findUnique matches only the given user's tailscale_login.
+  const mkConfig = (user: any) => ({
+    engine: {
+      sessions: { findFirst: async () => null },
+      users: { findUnique: async ({ where }: any) => (user && where.tailscale_login === user.tailscale_login) ? user : null },
+    },
+  }) as any;
+  const resolve = (header: string | null, user: any) =>
+    SessionManager.parseIncomingRequest(mkStreamer(header), mkConfig(user));
+
+  it("ignores the header when SSO is disabled", async () => {
+    delete process.env.MWS_TAILSCALE_SSO;
+    expect((await resolve("alice@example.com", alice)).isLoggedIn).toBe(false);
+  });
+
+  it("authenticates a mapped user when SSO is enabled (stateless, roles as mapped)", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    const u = await resolve("alice@example.com", alice);
+    expect(u.isLoggedIn).toBe(true);
+    expect(u.username).toBe("alice");
+    expect(u.sessionId).toBeUndefined();
+  });
+
+  it("denies an unmapped identity (no auto-provision)", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    expect((await resolve("bob@example.com", alice)).isLoggedIn).toBe(false);
+  });
+
+  it("denies a disabled mapped user", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    expect((await resolve("alice@example.com", { ...alice, disabled: true })).isLoggedIn).toBe(false);
+  });
+
+  it("is anonymous when no identity header is present", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    expect((await resolve(null, alice)).isLoggedIn).toBe(false);
+  });
+
+  it("prefers a valid session cookie over the SSO header", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    const streamer = {
+      cookies: { getAll: () => ["sess-1"] },
+      headers: { "tailscale-user-login": "alice@example.com" },
+    } as any;
+    const config = {
+      engine: {
+        sessions: {
+          findFirst: async () => ({
+            session_id: "sess-1",
+            user: { user_id: "u-cookie", username: "cookieuser", nickname: null, disabled: false, roles: [] },
+          }),
+        },
+        users: { findUnique: async () => alice }, // would match, but the cookie must win
+      },
+    } as any;
+    const u = await SessionManager.parseIncomingRequest(streamer, config);
+    expect(u.isLoggedIn).toBe(true);
+    expect(u.username).toBe("cookieuser");
+    expect(u.sessionId).toBe("sess-1");
   });
 });

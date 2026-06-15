@@ -69,7 +69,15 @@ satisfies all of them.
   (`SessionManager.checkLoginRateLimit`): after a burst of login starts within a window the
   username is locked out for a cooldown. Keyed by username because behind Tailscale Serve the
   client IP is always the loopback proxy; with OPAQUE a wrong password fails client-side, so the
-  `/login/1` start is the server-side attempt signal. Resets on process restart.
+  `/login/1` start is the server-side attempt signal. Resets on process restart; the tracked-username
+  map is hard-capped (LRU eviction) so a username-spray cannot exhaust memory.
+- **Tailscale SSO (optional, off by default)** — when `MWS_TAILSCALE_SSO=1`, a request carrying a
+  `Tailscale-User-Login` header is matched to a user's `tailscale_login` and authenticated
+  **passwordlessly, per request** (no session row); roles are as mapped. **Relies on these
+  invariants:** MWS binds **loopback only**, is fronted by **Tailscale Serve** (which strips any
+  client-supplied `Tailscale-*` headers and injects the verified identity), and **Funnel is OFF**
+  (public requests carry no header → fall through to password). **Deny-unless-mapped** (no
+  auto-provision); disabled users are rejected. See `SessionManager.resolveTailscaleSSO`.
 - **Authorization (ACL)** — role-based read/write on bags and recipes. A high-severity fix
   corrected `getRecipeACL`/`getBagACL` to read `roles.map(r => r.role_id)` (the code previously
   read an always-`undefined` `role_ids`, so non-admins could only reach resources they owned).
