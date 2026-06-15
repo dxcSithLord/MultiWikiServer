@@ -114,8 +114,9 @@ is referenced from root deps as `prisma-client file:prisma/client`.
   GAP: no SP 800-53 control mapping; no key-rotation procedure for the password master key.
 - **OWASP**: API Top-10 wired via `.spectral.yaml`, enforced by `openapi-coverage` at
   `--fail-severity=error`; CSRF (`X-Requested-With` + same-origin referer host), output
-  escaping, the broken-access-control + error-handling fixes above. GAP: no rate limiting
-  (api4 is `warn`-only); no CSRF token (defense-in-depth).
+  escaping, the broken-access-control + error-handling fixes above, and **login rate-limiting**
+  (in-memory per-username throttle on `/login/1`). GAP: no general per-route rate limiting (api4
+  is `warn`-only); no CSRF token (defense-in-depth).
 - **FIPS 140-3** (uplifted from the workspace's "140-2" — 140-2 is superseded): the stack is
   **NOT FIPS-validated** and largely can't be without major change. See the dedicated path in
   §7. Do **not** claim FIPS compliance.

@@ -15,7 +15,7 @@ family-app deployment.
 | Standard | Status |
 |---|---|
 | **NIST** | SP 800-63B-style authentication via OPAQUE (no password transmitted or stored as a recoverable hash). Session cookie is `HttpOnly` + `SameSite=Strict` + `Secure` (behind a TLS-terminating proxy with `secure=true`). **Gap:** no SP 800-53 control mapping; no documented key-rotation procedure for the password master key (`passwords.key`). |
-| **OWASP** | API Top-10 ruleset wired via `.spectral.yaml`, enforced by the `openapi-coverage` skill at `--fail-severity=error`. CSRF (`X-Requested-With` + same-origin referer **host**), output escaping, and the broken-access-control + error-handling fixes (see below). **Gap:** no rate limiting (OWASP API4 is `warn`-only); no anti-CSRF token (defense-in-depth). |
+| **OWASP** | API Top-10 ruleset wired via `.spectral.yaml`, enforced by the `openapi-coverage` skill at `--fail-severity=error`. CSRF (`X-Requested-With` + same-origin referer **host**), output escaping, **login rate-limiting** (per-username throttle on `/login/1`, see below), and the broken-access-control + error-handling fixes. **Gap:** no general per-route rate limiting (OWASP API4 is `warn`-only); no anti-CSRF token (defense-in-depth). |
 | **FIPS 140-3** | **Not FIPS-validated**, and largely cannot be without major change (OPAQUE's WASM crypto, Tailscale transport, and the Pi/Debian host are not validated modules). **Recorded decision: FIPS-140-3 is a documented non-goal for the current reference deployment (tailnet-only, behind Tailscale).** A deployment with stricter requirements would need the phased path in `SDP.md` §7. Do not claim FIPS compliance. See [`SDP.md`](SDP.md) §7 for the full analysis and the phased path if it ever becomes a requirement. |
 
 > Note: the workspace standard references FIPS 140-2; 140-2 is superseded by **140-3**, which
@@ -65,6 +65,11 @@ satisfies all of them.
   a same-origin `referer` whose **host** matches the request Host. The host check closed an
   `evil.com/admin` bypass that the earlier pathname-only check allowed; verified live behind
   `tailscale serve`. See `packages/mws/src/managers/admin-utils.ts`.
+- **Login rate-limiting** — an in-memory, per-username throttle on `POST /login/1`
+  (`SessionManager.checkLoginRateLimit`): after a burst of login starts within a window the
+  username is locked out for a cooldown. Keyed by username because behind Tailscale Serve the
+  client IP is always the loopback proxy; with OPAQUE a wrong password fails client-side, so the
+  `/login/1` start is the server-side attempt signal. Resets on process restart.
 - **Authorization (ACL)** — role-based read/write on bags and recipes. A high-severity fix
   corrected `getRecipeACL`/`getBagACL` to read `roles.map(r => r.role_id)` (the code previously
   read an always-`undefined` `role_ids`, so non-admins could only reach resources they owned).
@@ -87,7 +92,7 @@ satisfies all of them.
 
 | STRIDE | Surface | Current mitigation | Open |
 |---|---|---|---|
-| **S**poofing | Login | OPAQUE; session cookie | Brute-force throttling |
+| **S**poofing | Login | OPAQUE; session cookie; login rate-limiting (per-username) | Distributed/credential-stuffing across many usernames |
 | **T**ampering | Admin/sync APIs | CSRF header + referer-host; ACL | Anti-CSRF token |
 | **R**epudiation | Admin actions | Server event log | Audit-log retention policy |
 | **I**nfo disclosure | Tiddler/bag reads | ACL; `Secure` cookie over TLS | At-rest encryption |
