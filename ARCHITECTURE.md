@@ -195,9 +195,15 @@ erDiagram
   AuditLog {
     int id
     datetime created_at
+    string actor_user_id
     string actor_label
     string action
+    string target_type
+    string target_id
+    string target_name
     string outcome
+    json detail
+    string source
   }
 ```
 
