@@ -165,6 +165,7 @@ REGEX_DOC_PATHS=(
   "/admin-htmx/users"              # admin-htmx.ts
   "/admin-htmx/roles"              # admin-htmx.ts
   "/admin-htmx/settings"           # admin-htmx.ts
+  "/admin-htmx/audit"              # admin-htmx.ts
   "/admin-htmx/profile"            # admin-htmx.ts
   "/admin-htmx/styles.css"         # admin-htmx.ts  /^\/admin-htmx\/styles\.css$/
   "/admin-htmx/opaque.js"          # admin-htmx.ts  /^\/admin-htmx\/opaque\.js$/
@@ -194,6 +195,7 @@ REGEX_SRC_KNOWN=(
   '/^\/admin-htmx\/users$/'                # admin-htmx.ts
   '/^\/admin-htmx\/roles$/'                # admin-htmx.ts
   '/^\/admin-htmx\/settings$/'             # admin-htmx.ts
+  '/^\/admin-htmx\/audit$/'                # admin-htmx.ts
   '/^\/admin-htmx\/profile$/'              # admin-htmx.ts
   '/^\/admin-htmx\/styles\.css$/'          # admin-htmx.ts
   '/^\/admin-htmx\/opaque\.js$/'           # admin-htmx.ts

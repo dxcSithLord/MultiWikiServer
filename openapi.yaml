@@ -201,6 +201,7 @@ paths:
               - user_set_disabled
               - role_create
               - role_update
+              - audit_list
               - recipe_create_or_update
               - recipe_delete
               - recipe_acl_update
@@ -228,6 +229,7 @@ paths:
                 - $ref: '#/components/schemas/UserSetDisabledRequest'
                 - $ref: '#/components/schemas/RoleCreateRequest'
                 - $ref: '#/components/schemas/RoleUpdateRequest'
+                - $ref: '#/components/schemas/AuditListRequest'
                 - $ref: '#/components/schemas/RecipeCreateOrUpdateRequest'
                 - $ref: '#/components/schemas/RecipeDeleteRequest'
                 - $ref: '#/components/schemas/AclUpdateRequest'
@@ -252,6 +254,7 @@ paths:
                   - { type: array, items: { $ref: '#/components/schemas/SettingItem' } }
                   - $ref: '#/components/schemas/TempPasswordResponse'
                   - $ref: '#/components/schemas/CreatedUser'
+                  - $ref: '#/components/schemas/AuditListResponse'
                   - $ref: '#/components/schemas/SuccessFlag'
         '400': { $ref: '#/components/responses/SendErrorResponse' }
         '403': { $ref: '#/components/responses/SendErrorResponse' }
@@ -786,6 +789,15 @@ paths:
         '302': { description: Redirect to `/login`. }
         '403': { $ref: '#/components/responses/HtmlError' }
 
+  /admin-htmx/audit:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Audit log page (read-only)
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
   /admin-htmx/profile:
     get:
       tags: [Admin UI]
@@ -1160,6 +1172,38 @@ components:
       type: object
       properties:
         temporaryPassword: { type: string }
+    AuditListRequest:
+      type: object
+      description: Body for the `audit_list` key (all fields optional). Page defaults to 1, pageSize to 50 (max 200).
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 200 }
+        action: { type: string, description: Exact action filter such as login.success }
+        actor: { type: string, description: Substring match on the actor label }
+    AuditListResponse:
+      type: object
+      required: [total, page, pageSize, rows]
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/AuditLogEntry' }
+    AuditLogEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        created_at: { type: string, format: date-time }
+        actor_user_id: { type: [string, 'null'] }
+        actor_label: { type: string }
+        action: { type: string }
+        target_type: { type: [string, 'null'] }
+        target_id: { type: [string, 'null'] }
+        target_name: { type: [string, 'null'] }
+        outcome: { type: string, enum: [success, denied, error] }
+        detail: { type: [object, 'null'], additionalProperties: true, description: Small non-sensitive context bag (null when absent) }
+        source: { type: [string, 'null'] }
     SettingItem:
       type: object
       properties:

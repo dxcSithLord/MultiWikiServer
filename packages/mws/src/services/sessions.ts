@@ -3,6 +3,7 @@ import { jsonify, JsonValue, registerZodRoutes, RouterKeyMap, ServerRoute, Strea
 import { createHash, randomBytes } from "node:crypto";
 import { ServerState } from "../ServerState";
 import { serverEvents } from "@tiddlywiki/events";
+import { recordAudit, actorLabel } from "./audit";
 
 declare module "@tiddlywiki/server" {
   interface IncomingHttpHeaders {
@@ -248,15 +249,36 @@ export class SessionManager {
     const { username, startLoginRequest } = state.data;
 
     // Throttle repeated login starts per username (brute-force / credential-stuffing).
-    SessionManager.checkLoginRateLimit(username);
+    // Audit via state.engine (not the txn `prisma`) so denials are recorded durably.
+    try {
+      SessionManager.checkLoginRateLimit(username);
+    } catch (e) {
+      await recordAudit(state.engine, {
+        action: "login.lockout", outcome: "denied", actor_label: username,
+        detail: { reason: "rate_limit" },
+      });
+      throw e;
+    }
 
     const user = await prisma.users.findUnique({
       where: { username },
       select: { user_id: true, password: true, disabled: true, }
     });
 
-    if (!user) throw "User not found.";
-    if (user.disabled) throw "Account is disabled.";
+    if (!user) {
+      await recordAudit(state.engine, {
+        action: "login.failure", outcome: "denied", actor_label: username,
+        detail: { reason: "user_not_found" },
+      });
+      throw "User not found.";
+    }
+    if (user.disabled) {
+      await recordAudit(state.engine, {
+        action: "login.failure", outcome: "denied", actor_label: username,
+        actor_user_id: user.user_id, detail: { reason: "disabled" },
+      });
+      throw "Account is disabled.";
+    }
 
     const { user_id, password } = user;
 
@@ -296,11 +318,23 @@ export class SessionManager {
     // Re-check the account here too: it may have been disabled between /login/1 and /login/2.
     const account = await prisma.users.findUnique({
       where: { user_id: value.user_id },
-      select: { disabled: true },
+      select: { disabled: true, username: true },
     });
-    if (!account || account.disabled) throw "Account is disabled.";
+    if (!account || account.disabled) {
+      await recordAudit(state.engine, {
+        action: "login.failure", outcome: "denied",
+        actor_user_id: value.user_id, actor_label: account?.username ?? `user:${value.user_id}`,
+        detail: { reason: account ? "disabled" : "user_not_found", stage: "login2" },
+      });
+      throw "Account is disabled.";
+    }
 
     const session_id = await createSession(prisma, value.user_id, value.session.sessionKey);
+
+    await recordAudit(state.engine, {
+      action: "login.success", outcome: "success",
+      actor_user_id: value.user_id, actor_label: account.username,
+    });
 
     if (!skipCookie) {
       // the client can ask to skip the cookie for things like password change
@@ -342,12 +376,22 @@ export class SessionManager {
       const { session_id, signature } = state.data;
       assertSignature({ session_id, signature, session_key });
       await prisma.sessions.delete({ where: { session_id: state.data.session_id } });
+      await recordAudit(state.engine, {
+        action: "logout", outcome: "success",
+        actor_user_id: session.user_id, actor_label: actorLabel(state.user),
+      });
       return null;
     }
 
     // SSO users are authenticated per-request from the header and have no session row.
     if (state.user.isLoggedIn && state.user.sessionId) {
       await prisma.sessions.delete({ where: { session_id: state.user.sessionId } });
+    }
+    if (state.user.isLoggedIn) {
+      await recordAudit(state.engine, {
+        action: "logout", outcome: "success",
+        actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      });
     }
     var cookies = state.headers.cookie ? state.headers.cookie.split(";") : [];
     for (var i = 0; i < cookies.length; i++) {

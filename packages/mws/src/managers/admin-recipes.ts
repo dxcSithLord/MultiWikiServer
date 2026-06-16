@@ -2,6 +2,7 @@ import { registerZodRoutes, RouterKeyMap, RouterRouteMap, ServerRequest, ServerR
 import { admin } from "./admin-utils";
 import { serverEvents } from "@tiddlywiki/events";
 import { hasWikiAdmin } from "../services/roles";
+import { recordAudit, actorLabel } from "../services/audit";
 
 
 serverEvents.on("mws.routes", (root) => {
@@ -103,10 +104,15 @@ export class RecipeManager {
         where: { recipe_name },
         data: { recipe_bags: { create: createBags } }
       });
+      await recordAudit(state.engine, {
+        action: "recipe.update", outcome: "success",
+        actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+        target_type: "recipe", target_id: existing.recipe_id, target_name: recipe_name,
+      });
       return existing;
     } else {
 
-      return await prisma.recipes.create({
+      const created = await prisma.recipes.create({
         data: {
           recipe_name,
           description,
@@ -119,6 +125,12 @@ export class RecipeManager {
           custom_wiki,
         },
       });
+      await recordAudit(state.engine, {
+        action: "recipe.create", outcome: "success",
+        actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+        target_type: "recipe", target_id: created.recipe_id, target_name: recipe_name,
+      });
+      return created;
     }
   });
 
@@ -143,7 +155,7 @@ export class RecipeManager {
 
     this.assertCreateOrUpdate({ type: "bag", isCreate, owner_id, existing, user: state.user });
 
-    return await prisma.bags.upsert({
+    const bag = await prisma.bags.upsert({
       where: { bag_name },
       update: {
         description,
@@ -156,6 +168,13 @@ export class RecipeManager {
       },
     });
 
+    await recordAudit(state.engine, {
+      action: existing ? "bag.update" : "bag.create", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "bag", target_id: bag.bag_id, target_name: bag_name,
+    });
+
+    return bag;
   });
 
   assertCreateOrUpdate({
@@ -219,6 +238,12 @@ export class RecipeManager {
       where: { recipe_name }
     });
 
+    await recordAudit(state.engine, {
+      action: "recipe.delete", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "recipe", target_id: recipe.recipe_id, target_name: recipe_name,
+    });
+
     return null;
   });
 
@@ -247,6 +272,12 @@ export class RecipeManager {
 
     await prisma.bags.delete({
       where: { bag_name }
+    });
+
+    await recordAudit(state.engine, {
+      action: "bag.delete", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "bag", target_id: bag.bag_id, target_name: bag_name,
     });
 
     return null;
@@ -293,6 +324,13 @@ export class RecipeManager {
       })
     });
 
+    await recordAudit(state.engine, {
+      action: "recipe.acl_update", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "recipe", target_id: recipe_id, target_name: recipe_name,
+      detail: { entries: distinct.size },
+    });
+
     return null;
   });
 
@@ -332,6 +370,13 @@ export class RecipeManager {
         const [role_id, permission] = JSON.parse(e);
         return { bag_id, role_id, permission };
       })
+    });
+
+    await recordAudit(state.engine, {
+      action: "bag.acl_update", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "bag", target_id: bag_id, target_name: bag_name,
+      detail: { entries: distinct.size },
     });
 
     return null;

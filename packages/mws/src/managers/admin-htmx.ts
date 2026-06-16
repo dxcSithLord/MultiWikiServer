@@ -30,6 +30,7 @@ interface FrameTemplateVars {
   isUsers?: boolean;
   isRoles?: boolean;
   isSettings?: boolean;
+  isAudit?: boolean;
   isAdmin: boolean;
 }
 
@@ -128,6 +129,7 @@ export class HtmxAdminManager {
     html = html.replace(/\{\{#if isUsers\}\}(.*?)\{\{\/if\}\}/gs, vars.isUsers ? '$1' : '');
     html = html.replace(/\{\{#if isRoles\}\}(.*?)\{\{\/if\}\}/gs, vars.isRoles ? '$1' : '');
     html = html.replace(/\{\{#if isSettings\}\}(.*?)\{\{\/if\}\}/gs, vars.isSettings ? '$1' : '');
+    html = html.replace(/\{\{#if isAudit\}\}(.*?)\{\{\/if\}\}/gs, vars.isAudit ? '$1' : '');
     html = html.replace(/\{\{#if isAdmin\}\}(.*?)\{\{\/if\}\}/gs, vars.isAdmin ? '$1' : '');
 
     return html;
@@ -641,6 +643,46 @@ export class HtmxAdminManager {
           pathPrefix: state.pathPrefix,
           username: state.user?.username || "Guest",
           isRoles: true,
+          isAdmin: state.user.isAdmin,
+        });
+
+        return state.sendBuffer(200, {
+          "content-type": "text/html; charset=utf-8",
+        }, Buffer.from(html, "utf-8"));
+      }
+    );
+
+    // Audit log route (read-only; admin-only)
+    root.defineRoute(
+      {
+        path: /^\/admin-htmx\/audit$/,
+        method: ["GET"],
+      },
+      async (state) => {
+        try {
+          state.okUser();
+        } catch (error) {
+          return state.sendBuffer(302, {
+            "location": `${state.pathPrefix}/login?redirect=${encodeURIComponent(state.url)}`,
+          }, Buffer.from("Redirecting to login...", "utf-8"));
+        }
+
+        if (!state.user.isAdmin) {
+          await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
+          return HtmxAdminManager.send403(state);
+        }
+
+        await serverEvents.emitAsync("admin.htmx.page.accessed", state, state.user.isAdmin);
+
+        const templatePath = resolve(templatesDir, "htmx-admin-audit.html");
+        let content = await readFile(templatePath, "utf-8");
+        content = content.replace(/\{\{pathPrefix\}\}/g, state.pathPrefix);
+
+        const html = await HtmxAdminManager.renderFrame(content, {
+          pageTitle: "Audit log",
+          pathPrefix: state.pathPrefix,
+          username: state.user?.username || "Guest",
+          isAudit: true,
           isAdmin: state.user.isAdmin,
         });
 

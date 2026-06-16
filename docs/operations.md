@@ -145,3 +145,35 @@ short-lived `mws_no_sso` marker that suppresses SSO for ~5 minutes, landing you 
 - To **come back as yourself immediately** (skip the wait), click **"Log in with Tailscale (SSO)"**
   on the login page (`GET /resume-sso`) — it clears the marker and SSO re-resolves.
 - Otherwise SSO simply resumes automatically once the marker expires.
+
+## 8. Reading the audit log
+
+Administrative, structural, and authentication events are recorded to the append-only
+`audit_log` table (access-model Batch 4). Sign in as an admin and open the **Audit log** item in
+the admin sidebar (`/admin-htmx/audit`): entries are listed newest-first, 50 per page, with
+optional filters by **action** (e.g. `login.success`, `recipe.delete`) and **actor**. Each row
+shows the UTC time, actor, action, outcome (`success` / `denied` / `error`), target, and a small
+non-sensitive detail bag. The log never stores passwords, OPAQUE material, session ids, or raw
+headers; viewing the log is not itself audited.
+
+**Append-only (WORM).** The `audit_log` table is append-only, enforced at the database layer by
+two triggers (`audit_log_no_update`, `audit_log_no_delete`) that abort any `UPDATE` or `DELETE`
+(NIST SP 800-53 AU-9). The application only ever inserts rows, so normal operation is unaffected;
+the triggers make tampering/erasure a hard constraint rather than a convention.
+
+**Retention / growth.** The table grows unbounded — there is no automatic pruning. Rows are
+small and indexed on `created_at`, so normal use is fine, but for a long-lived busy deployment a
+periodic prune is a **deliberate maintenance action** (the delete trigger blocks casual deletion
+on purpose). With the service stopped, drop the trigger, prune, then recreate it:
+
+```sql
+DROP TRIGGER audit_log_no_delete;
+DELETE FROM audit_log WHERE created_at < datetime('now', '-180 days');
+CREATE TRIGGER audit_log_no_delete
+BEFORE DELETE ON audit_log
+BEGIN
+  SELECT RAISE(ABORT, 'audit_log is append-only: DELETE is not allowed');
+END;
+```
+
+Back this up with the rest of `dev/wiki/store/database.sqlite` (see §5).

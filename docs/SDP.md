@@ -88,6 +88,14 @@ this server, not a part of it.
     as the `WIKI_ADMIN_ROLE` constant in `packages/mws/src/services/roles.ts` (imported by both the
     `init-store` seed and the authorization checks); the role is seeded by `init-store` for fresh
     installs. See `packages/mws/src/services/roles.ts` and `packages/mws/src/managers/admin-recipes.ts`.
+    **Batch 4a — audit logging:** an append-only `audit_log` table (additive migration) records
+    administrative, structural, and authentication events through a single sink
+    (`services/audit.ts`). Rows are written via the root engine (not the request transaction) so
+    denials/failed logins persist even when the action rolls back, and write failures are swallowed
+    so audit never breaks a request; no secrets/OPAQUE/session-ids/headers are stored. A read-only,
+    filterable, paged admin view is served at `/admin-htmx/audit` (`audit_list` key). The session
+    lifecycle (idle/absolute timeout) + SSO login de-dup follow in Batch 4b. See
+    `packages/mws/src/services/audit.ts`.
 
 ## 3. Tools & skills
 

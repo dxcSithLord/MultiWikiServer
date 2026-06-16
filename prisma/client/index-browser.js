@@ -199,12 +199,31 @@ exports.Prisma.SessionsScalarFieldEnum = {
   user_id: "user_id",
 };
 
+exports.Prisma.AuditLogScalarFieldEnum = {
+  id: "id",
+  created_at: "created_at",
+  actor_user_id: "actor_user_id",
+  actor_label: "actor_label",
+  action: "action",
+  target_type: "target_type",
+  target_id: "target_id",
+  target_name: "target_name",
+  outcome: "outcome",
+  detail: "detail",
+  source: "source",
+};
+
 exports.Prisma.SortOrder = {
   asc: "asc",
   desc: "desc",
 };
 
 exports.Prisma.JsonNullValueInput = {
+  JsonNull: Prisma.JsonNull,
+};
+
+exports.Prisma.NullableJsonNullValueInput = {
+  DbNull: Prisma.DbNull,
   JsonNull: Prisma.JsonNull,
 };
 
@@ -241,6 +260,7 @@ exports.Prisma.ModelName = {
   Roles: "Roles",
   Users: "Users",
   Sessions: "Sessions",
+  AuditLog: "AuditLog",
 };
 
 /**
