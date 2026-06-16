@@ -1,0 +1,138 @@
+<div class="mws-admin-card">
+  <div class="mws-admin-card-header">
+    <h2>Audit log</h2>
+    <div class="mws-btn-group">
+      <input type="text" class="mws-form-input" id="audit-filter-action" placeholder="Filter action (e.g. login.success)" style="width: 16rem;">
+      <input type="text" class="mws-form-input" id="audit-filter-actor" placeholder="Filter actor" style="width: 12rem;">
+      <button class="mws-btn mws-btn-secondary" id="audit-apply-btn">Apply</button>
+      <button class="mws-btn mws-btn-secondary" id="audit-clear-btn">Clear</button>
+    </div>
+  </div>
+  <div style="padding: 0;">
+    <div id="audit-loading" class="mws-loading" style="display: none;">
+      <div class="mws-spinner"></div>
+      Loading audit log...
+    </div>
+    <div style="overflow-x: auto;">
+      <table class="mws-admin-table" id="audit-table" style="display: none;">
+        <thead>
+          <tr>
+            <th>Time (UTC)</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Outcome</th>
+            <th>Target</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody id="audit-tbody">
+        </tbody>
+      </table>
+    </div>
+    <div id="audit-empty" style="padding: 2rem; text-align: center; display: none;">
+      <p class="mws-text-muted">No audit entries found.</p>
+    </div>
+  </div>
+  <div class="mws-admin-card-header" style="justify-content: space-between;">
+    <span class="mws-text-muted" id="audit-summary"></span>
+    <div class="mws-btn-group">
+      <button class="mws-btn mws-btn-sm mws-btn-secondary" id="audit-prev-btn">Previous</button>
+      <button class="mws-btn mws-btn-sm mws-btn-secondary" id="audit-next-btn">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const pathPrefix = '{{pathPrefix}}';
+  const PAGE_SIZE = 50;
+  let page = 1;
+  let total = 0;
+
+  async function loadAudit() {
+    const loading = document.getElementById('audit-loading');
+    loading.style.display = 'block';
+    try {
+      const body = { page, pageSize: PAGE_SIZE };
+      const action = document.getElementById('audit-filter-action').value.trim();
+      const actor = document.getElementById('audit-filter-actor').value.trim();
+      if (action) body.action = action;
+      if (actor) body.actor = actor;
+
+      const response = await fetch(pathPrefix + '/admin/audit_list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'TiddlyWiki',
+          'Referer': window.location.href
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) throw new Error('Failed to load audit log');
+
+      const data = await response.json();
+      total = data.total || 0;
+      renderAudit(data.rows || []);
+    } catch (error) {
+      console.error('Failed to load audit log:', error);
+      showToast('Failed to load audit log: ' + error.message, 'error');
+    } finally {
+      loading.style.display = 'none';
+    }
+  }
+
+  function renderAudit(rows) {
+    const table = document.getElementById('audit-table');
+    const empty = document.getElementById('audit-empty');
+    const tbody = document.getElementById('audit-tbody');
+
+    if (rows.length === 0 && page === 1) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      table.style.display = 'table';
+      tbody.innerHTML = '';
+      rows.forEach(r => {
+        const row = document.createElement('tr');
+        const target = [r.target_type, r.target_name || r.target_id].filter(Boolean).join(': ');
+        const detail = r.detail ? JSON.stringify(r.detail) : '';
+        row.innerHTML =
+          '<td><code>' + escapeHtml(r.created_at) + '</code></td>' +
+          '<td>' + escapeHtml(r.actor_label) + '</td>' +
+          '<td><code>' + escapeHtml(r.action) + '</code></td>' +
+          '<td>' + escapeHtml(r.outcome) + '</td>' +
+          '<td>' + escapeHtml(target) + '</td>' +
+          '<td><small>' + escapeHtml(detail) + '</small></td>';
+        tbody.appendChild(row);
+      });
+    }
+
+    const start = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+    const end = Math.min(page * PAGE_SIZE, total);
+    document.getElementById('audit-summary').textContent =
+      total === 0 ? 'No entries' : (start + '–' + end + ' of ' + total);
+    document.getElementById('audit-prev-btn').disabled = page <= 1;
+    document.getElementById('audit-next-btn').disabled = page * PAGE_SIZE >= total;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('audit-apply-btn').addEventListener('click', () => { page = 1; loadAudit(); });
+    document.getElementById('audit-clear-btn').addEventListener('click', () => {
+      document.getElementById('audit-filter-action').value = '';
+      document.getElementById('audit-filter-actor').value = '';
+      page = 1; loadAudit();
+    });
+    document.getElementById('audit-prev-btn').addEventListener('click', () => { if (page > 1) { page--; loadAudit(); } });
+    document.getElementById('audit-next-btn').addEventListener('click', () => { if (page * PAGE_SIZE < total) { page++; loadAudit(); } });
+    loadAudit();
+  });
+})();
+</script>

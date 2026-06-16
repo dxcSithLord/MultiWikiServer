@@ -145,3 +145,24 @@ short-lived `mws_no_sso` marker that suppresses SSO for ~5 minutes, landing you 
 - To **come back as yourself immediately** (skip the wait), click **"Log in with Tailscale (SSO)"**
   on the login page (`GET /resume-sso`) — it clears the marker and SSO re-resolves.
 - Otherwise SSO simply resumes automatically once the marker expires.
+
+## 8. Reading the audit log
+
+Administrative, structural, and authentication events are recorded to the append-only
+`audit_log` table (access-model Batch 4). Sign in as an admin and open the **Audit log** item in
+the admin sidebar (`/admin-htmx/audit`): entries are listed newest-first, 50 per page, with
+optional filters by **action** (e.g. `login.success`, `recipe.delete`) and **actor**. Each row
+shows the UTC time, actor, action, outcome (`success` / `denied` / `error`), target, and a small
+non-sensitive detail bag. The log never stores passwords, OPAQUE material, session ids, or raw
+headers; viewing the log is not itself audited.
+
+**Retention / growth.** The table grows unbounded — there is no automatic pruning yet. It is
+small per row and indexed on `created_at`, so normal use is fine, but for a long-lived busy
+deployment plan a periodic prune, e.g. delete entries older than N days directly against the
+store (service stopped, or via a maintenance window):
+
+```sql
+DELETE FROM audit_log WHERE created_at < datetime('now', '-180 days');
+```
+
+Back this up with the rest of `dev/wiki/store/database.sqlite` (see §5).

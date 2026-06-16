@@ -79,9 +79,17 @@ these are polish, not correctness):
         both the `init-store` seed and the authorization checks so the name has a single source of
         truth. Tests in `admin-recipes.acl.test.ts`. No schema change → deploy = restart. Existing
         deployments create the `WIKI_ADMIN` role via the admin Roles UI.
-  - [ ] **Batch 4 — audit + sessions:** `AuditLog` table + read-only admin view (`audit_list`);
-        emit points across user/role/recipe/bag/login; cookie idle/absolute timeout; SSO login
-        de-dup. **Update `security.md` audit/session section + `SDP.md`.**
+  - **Batch 4 — audit + sessions** (split into 4a + 4b):
+    - [x] **4a — audit logging (DONE):** additive `audit_log` table + migration; single sink
+          `services/audit.ts` (`recordAudit`); emit points across user/role create-update-delete,
+          recipe/bag create/update/delete + ACL updates, and cookie login success/failure/lockout +
+          logout; rows written via the root engine so denials/failed-logins persist through a
+          rolled-back action; read-only filterable paged view `/admin-htmx/audit` (`audit_list`
+          key) + OpenAPI. No secrets/OPAQUE/session-ids/headers stored. Docs: `security.md`,
+          `operations.md §8`, `SDP.md`.
+    - [ ] **4b — session lifecycle:** cookie `Max-Age`; throttled `last_accessed` refresh; idle
+          30 min / absolute 12 h expiry; write `last_login`; SSO login de-dup (bounded LRU, 30-min
+          window) + `sso.login` audit emit. Changes live login behaviour → own review/deploy.
   - [x] **Batch 5 — DONE (PR #19 / issue #18):** user home page (`/home`) listing the wikis a
         user can reach (reference wikis open in a new tab), with a working logout and a manage-wikis
         link when permitted; root dispatch by role (anon→login, admin→admin, user→/home); logout

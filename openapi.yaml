@@ -201,6 +201,7 @@ paths:
               - user_set_disabled
               - role_create
               - role_update
+              - audit_list
               - recipe_create_or_update
               - recipe_delete
               - recipe_acl_update
@@ -781,6 +782,15 @@ paths:
     get:
       tags: [Admin UI]
       summary: HTMX admin — Settings page
+      responses:
+        '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to `/login`. }
+        '403': { $ref: '#/components/responses/HtmlError' }
+
+  /admin-htmx/audit:
+    get:
+      tags: [Admin UI]
+      summary: HTMX admin — Audit log page (read-only)
       responses:
         '200': { description: HTML page., content: { text/html: { schema: { type: string } } } }
         '302': { description: Redirect to `/login`. }

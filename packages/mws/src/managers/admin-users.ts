@@ -2,6 +2,7 @@
 import { registerZodRoutes, RouterKeyMap, RouterRouteMap, ServerRoute } from "@tiddlywiki/server";
 import { admin } from "./admin-utils";
 import { assertSignature } from "../services/sessions";
+import { recordAudit, actorLabel } from "../services/audit";
 import { serverEvents } from "@tiddlywiki/events";
 import { randomInt } from "node:crypto";
 import { Prisma } from "@tiddlywiki/mws-prisma";
@@ -18,6 +19,7 @@ export const UserKeyMap: RouterKeyMap<UserManager, true> = {
   user_set_disabled: true,
   role_create: true,
   role_update: true,
+  audit_list: true,
 }
 
 export type UserManagerMap = RouterRouteMap<UserManager>;
@@ -186,6 +188,13 @@ export class UserManager {
         select: { user_id: true, created_at: true }
       });
 
+      await recordAudit(state.engine, {
+        action: "user.create", outcome: "success",
+        actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+        target_type: "user", target_id: user.user_id, target_name: username,
+        detail: { roles: effectiveRoleIds.length },
+      });
+
       return user;
     } catch (error) {
       handlePrismaUniqueConstraintError(error);
@@ -250,6 +259,12 @@ export class UserManager {
       handlePrismaUniqueConstraintError(error);
     }
 
+    await recordAudit(state.engine, {
+      action: "user.update", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "user", target_id: user_id, target_name: username,
+    });
+
     return null;
   });
 
@@ -271,6 +286,12 @@ export class UserManager {
     // Disabling immediately ends any active sessions for that user.
     if (disabled) await prisma.sessions.deleteMany({ where: { user_id } });
 
+    await recordAudit(state.engine, {
+      action: "user.set_disabled", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "user", target_id: user_id, detail: { disabled },
+    });
+
     return null;
   });
 
@@ -289,6 +310,12 @@ export class UserManager {
     if (bags) throw "User owns bags and cannot be deleted";
 
     await prisma.users.delete({ where: { user_id } });
+
+    await recordAudit(state.engine, {
+      action: "user.delete", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "user", target_id: user_id,
+    });
 
     return null;
   });
@@ -377,6 +404,12 @@ export class UserManager {
       data: { password: registrationRecord }
     });
 
+    await recordAudit(state.engine, {
+      action: "user.temp_password", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "user", target_id: user_id,
+    });
+
     // Return the temporary password to the admin (only shown once)
     return { temporaryPassword: tempPassword };
   });
@@ -393,10 +426,17 @@ export class UserManager {
     if (roleCount >= ROLE_SOFT_CAP)
       throw `Role limit reached (${ROLE_SOFT_CAP}). Delete an unused role or raise ROLE_SOFT_CAP.`;
 
-    return await prisma.roles.create({
+    const role = await prisma.roles.create({
       data: { role_name, description }
     });
 
+    await recordAudit(state.engine, {
+      action: "role.create", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "role", target_id: role.role_id, target_name: role_name,
+    });
+
+    return role;
   });
 
   role_update = admin(z => z.object({
@@ -420,11 +460,62 @@ export class UserManager {
     if (forbidRoleIDs.has(role_id)) throw "Cannot make changes to this role";
     if (forbidRoleNames.has(role_name)) throw "This role name is reserved";
 
-    return await prisma.roles.update({
+    const updated = await prisma.roles.update({
       where: { role_id },
       data: { role_name, description }
     });
 
+    await recordAudit(state.engine, {
+      action: "role.update", outcome: "success",
+      actor_user_id: state.user.user_id, actor_label: actorLabel(state.user),
+      target_type: "role", target_id: role_id, target_name: role_name,
+    });
+
+    return updated;
+  });
+
+  // Read-only, paged, filterable view of the audit trail (access-model Batch 4).
+  // Admin-only. Newest first. Reading the log is itself NOT audited (to avoid
+  // self-referential noise from simply viewing the page).
+  audit_list = admin(z => z.object({
+    page: z.number().int().min(1).optional(),
+    pageSize: z.number().int().min(1).max(200).optional(),
+    action: z.string().optional(),
+    actor: z.string().optional(),
+  }).optional(), async (state, prisma) => {
+    state.okAdmin();
+
+    const page = state.data?.page ?? 1;
+    const pageSize = state.data?.pageSize ?? 50;
+
+    const where: import("@tiddlywiki/mws-prisma").Prisma.AuditLogWhereInput = {};
+    if (state.data?.action) where.action = state.data.action;
+    if (state.data?.actor) where.actor_label = { contains: state.data.actor };
+
+    const total = await prisma.auditLog.count({ where });
+    const rows = await prisma.auditLog.findMany({
+      where,
+      orderBy: { created_at: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+
+    return {
+      total, page, pageSize,
+      rows: rows.map(r => ({
+        id: r.id,
+        created_at: r.created_at.toISOString(),
+        actor_user_id: r.actor_user_id,
+        actor_label: r.actor_label,
+        action: r.action,
+        target_type: r.target_type,
+        target_id: r.target_id,
+        target_name: r.target_name,
+        outcome: r.outcome,
+        detail: r.detail ?? null,
+        source: r.source,
+      })),
+    };
   });
 
 }

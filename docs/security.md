@@ -123,6 +123,19 @@ satisfies all of them.
 - **Role-count soft cap** — `role_create` refuses to create more than `ROLE_SOFT_CAP` (20) roles,
   a guard against accidental role sprawl (no DB constraint; trivially raised in code). See
   `packages/mws/src/managers/admin-users.ts`.
+- **Audit logging** — administrative, structural, and authentication events are recorded to an
+  append-only `audit_log` table via a single sink (`services/audit.ts`, `recordAudit`). Emit
+  points cover user create/update/delete/set_disabled/temp-password and role create/update
+  (`admin-users.ts`); recipe/bag create/update/delete and ACL updates (`admin-recipes.ts`); and
+  cookie login success/failure, rate-limit lockout, and logout (`services/sessions.ts`). Rows are
+  written via the **root engine** (not the request transaction) so denials and failed logins are
+  recorded even when the action's own transaction rolls back; a write failure is swallowed so
+  audit can never break a request. Rows record an actor label (username / `anon`), action,
+  outcome (success/denied/error), optional target, and a small non-sensitive `detail` bag —
+  **never** passwords, OPAQUE material, session ids/keys, or raw headers. Admins read the trail
+  (newest first, filterable, paged) at the read-only **Audit log** page (`/admin-htmx/audit`,
+  `audit_list` key); viewing it is not itself audited. (Session-lifecycle auditing — SSO login
+  de-dup — lands with the session-timeout work in Batch 4b.)
 - **Access-management UI** — admins set, change, and remove role→permission grants from the
   **Recipes** and **Bags** edit modals ("Access (roles)" section), wired to the existing
   `recipe_acl_update` / `bag_acl_update` admin keys (full-replace semantics). Previously these
