@@ -124,7 +124,11 @@ satisfies all of them.
   a guard against accidental role sprawl (no DB constraint; trivially raised in code). See
   `packages/mws/src/managers/admin-users.ts`.
 - **Audit logging** — administrative, structural, and authentication events are recorded to an
-  append-only `audit_log` table via a single sink (`services/audit.ts`, `recordAudit`). Emit
+  append-only `audit_log` table via a single sink (`services/audit.ts`, `recordAudit`). The table
+  is **append-only (WORM) enforced at the database layer**: two triggers
+  (`audit_log_no_update` / `audit_log_no_delete`) abort any `UPDATE`/`DELETE`, so the trail cannot
+  be altered or erased by any SQL path (NIST SP 800-53 AU-9). Retention pruning is a deliberate
+  maintenance action (drop trigger → prune → recreate; see `docs/operations.md §8`). Emit
   points cover user create/update/delete/set_disabled/temp-password and role create/update
   (`admin-users.ts`); recipe/bag create/update/delete and ACL updates (`admin-recipes.ts`); and
   cookie login success/failure, rate-limit lockout, and logout (`services/sessions.ts`). Rows are

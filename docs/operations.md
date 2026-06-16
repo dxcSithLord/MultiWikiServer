@@ -156,13 +156,24 @@ shows the UTC time, actor, action, outcome (`success` / `denied` / `error`), tar
 non-sensitive detail bag. The log never stores passwords, OPAQUE material, session ids, or raw
 headers; viewing the log is not itself audited.
 
-**Retention / growth.** The table grows unbounded — there is no automatic pruning yet. It is
-small per row and indexed on `created_at`, so normal use is fine, but for a long-lived busy
-deployment plan a periodic prune, e.g. delete entries older than N days directly against the
-store (service stopped, or via a maintenance window):
+**Append-only (WORM).** The `audit_log` table is append-only, enforced at the database layer by
+two triggers (`audit_log_no_update`, `audit_log_no_delete`) that abort any `UPDATE` or `DELETE`
+(NIST SP 800-53 AU-9). The application only ever inserts rows, so normal operation is unaffected;
+the triggers make tampering/erasure a hard constraint rather than a convention.
+
+**Retention / growth.** The table grows unbounded — there is no automatic pruning. Rows are
+small and indexed on `created_at`, so normal use is fine, but for a long-lived busy deployment a
+periodic prune is a **deliberate maintenance action** (the delete trigger blocks casual deletion
+on purpose). With the service stopped, drop the trigger, prune, then recreate it:
 
 ```sql
+DROP TRIGGER audit_log_no_delete;
 DELETE FROM audit_log WHERE created_at < datetime('now', '-180 days');
+CREATE TRIGGER audit_log_no_delete
+BEFORE DELETE ON audit_log
+BEGIN
+  SELECT RAISE(ABORT, 'audit_log is append-only: DELETE is not allowed');
+END;
 ```
 
 Back this up with the rest of `dev/wiki/store/database.sqlite` (see §5).
