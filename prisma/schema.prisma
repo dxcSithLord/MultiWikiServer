@@ -157,3 +157,26 @@ model Sessions {
 
   @@map("sessions")
 }
+
+/// Append-only audit trail for administrative, structural, and authentication
+/// events (access-model Batch 4). Additive table. NEVER stores passwords, OPAQUE
+/// material, session ids/keys, or raw headers — see services/audit.ts. `detail`
+/// holds a small, non-sensitive key/value bag for context.
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  created_at    DateTime @default(now())
+  actor_user_id String?
+  actor_label   String
+  action        String
+  target_type   String?
+  target_id     String?
+  target_name   String?
+  outcome       String
+  /// [AuditLog_detail]
+  detail        Json?
+  source        String?
+
+  @@index([created_at])
+  @@index([actor_user_id])
+  @@map("audit_log")
+}

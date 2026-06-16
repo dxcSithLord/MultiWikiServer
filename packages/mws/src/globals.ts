@@ -20,6 +20,9 @@ declare global {
        */
       normally_writable: boolean;
     }
+    /** Small, non-sensitive context bag for an audit row. NEVER put secrets,
+     * OPAQUE material, session ids/keys, passwords, or raw headers here. */
+    type AuditLog_detail = Record<string, string | number | boolean | null>;
   }
 }
 
