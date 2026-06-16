@@ -320,7 +320,14 @@ export class SessionManager {
       where: { user_id: value.user_id },
       select: { disabled: true, username: true },
     });
-    if (!account || account.disabled) throw "Account is disabled.";
+    if (!account || account.disabled) {
+      await recordAudit(state.engine, {
+        action: "login.failure", outcome: "denied",
+        actor_user_id: value.user_id, actor_label: account?.username ?? `user:${value.user_id}`,
+        detail: { reason: account ? "disabled" : "user_not_found", stage: "login2" },
+      });
+      throw "Account is disabled.";
+    }
 
     const session_id = await createSession(prisma, value.user_id, value.session.sessionKey);
 

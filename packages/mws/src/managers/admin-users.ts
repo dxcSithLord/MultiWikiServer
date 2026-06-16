@@ -495,7 +495,9 @@ export class UserManager {
     const total = await prisma.auditLog.count({ where });
     const rows = await prisma.auditLog.findMany({
       where,
-      orderBy: { created_at: "desc" },
+      // `id` (autoincrement) is the stable tie-breaker so pagination is deterministic
+      // when rows share a created_at timestamp.
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     });

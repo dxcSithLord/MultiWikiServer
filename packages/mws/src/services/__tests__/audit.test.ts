@@ -42,6 +42,25 @@ describe("Batch 4 — recordAudit", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("redacts sensitive keys from detail before persisting", async () => {
+    const { engine, create } = mockEngine();
+    await recordAudit(engine, {
+      action: "user.update", outcome: "success", actor_label: "admin",
+      detail: {
+        password: "hunter2", session_key: "abc", token: "t", signature: "sig",
+        Authorization: "Bearer x", cookie: "c", registrationRecord: "r",
+        roles: 2, reason: "ok",
+      },
+    });
+    const detail = create.mock.calls[0][0].data.detail;
+    // sensitive values masked...
+    for (const k of ["password", "session_key", "token", "signature", "Authorization", "cookie", "registrationRecord"])
+      expect(detail[k]).toBe("[redacted]");
+    // ...non-sensitive values preserved
+    expect(detail.roles).toBe(2);
+    expect(detail.reason).toBe("ok");
+  });
+
   it("clips an over-long actor_label", async () => {
     const { engine, create } = mockEngine();
     const long = "a".repeat(500);

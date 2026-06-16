@@ -47,6 +47,24 @@ export function actorLabel(user?: Pick<AuthUser, "isLoggedIn" | "username" | "us
   return clip(user.username || (user.user_id ? `user:${user.user_id}` : "anon"));
 }
 
+/** Keys whose VALUE must never be persisted, matched case-insensitively as a substring. */
+const SENSITIVE_KEY = /pass|secret|token|session_?key|session_?id|signature|credential|cookie|authorization|registration/i;
+const REDACTED = "[redacted]";
+
+/**
+ * Defence-in-depth: redact sensitive values from a detail bag at the sink, so a
+ * careless caller can never leak a secret into the audit log. Returns a new object
+ * with matching keys' values replaced by "[redacted]"; non-matching values are kept.
+ */
+export function redactDetail(detail?: PrismaJson.AuditLog_detail): PrismaJson.AuditLog_detail | undefined {
+  if (!detail || typeof detail !== "object") return detail;
+  const out: PrismaJson.AuditLog_detail = {};
+  for (const [k, v] of Object.entries(detail)) {
+    out[k] = SENSITIVE_KEY.test(k) ? REDACTED : v;
+  }
+  return out;
+}
+
 /** The single audit sink. Writes one row; swallows errors so it never breaks the request. */
 export async function recordAudit(engine: PrismaTxnClient, event: AuditEvent): Promise<void> {
   try {
@@ -59,7 +77,7 @@ export async function recordAudit(engine: PrismaTxnClient, event: AuditEvent): P
         target_id: event.target_id ?? null,
         target_name: event.target_name ?? null,
         outcome: event.outcome,
-        detail: event.detail ?? undefined,
+        detail: redactDetail(event.detail) ?? undefined,
         source: event.source ?? null,
       },
     });
