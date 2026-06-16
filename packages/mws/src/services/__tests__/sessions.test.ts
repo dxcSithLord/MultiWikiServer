@@ -3,7 +3,7 @@
  * Time is injected via the `now` argument so the tests are deterministic (no fake timers).
  * Each test uses a unique username to avoid sharing the static in-memory map.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { SessionManager } from "../sessions";
 
 const MAX = SessionManager.LOGIN_MAX_ATTEMPTS;
@@ -67,10 +67,12 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
   const mkStreamer = (header: string | null) =>
     ({ cookies: { getAll: () => [] }, headers: header ? { "tailscale-user-login": header } : {} }) as any;
   // engine: no session; users.findUnique matches only the given user's tailscale_login.
+  // auditLog is a no-op here — the SSO emit (Batch 4b) is asserted explicitly below.
   const mkConfig = (user: any) => ({
     engine: {
       sessions: { findFirst: async () => null },
       users: { findUnique: async ({ where }: any) => (user && where.tailscale_login === user.tailscale_login) ? user : null },
+      auditLog: { create: async () => ({}) },
     },
   }) as any;
   const resolve = (header: string | null, user: any) =>
@@ -92,6 +94,32 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
   it("denies an unmapped identity (no auto-provision)", async () => {
     process.env.MWS_TAILSCALE_SSO = "1";
     expect((await resolve("bob@example.com", alice)).isLoggedIn).toBe(false);
+  });
+
+  it("audits a NEW SSO login (sso.login) and de-dups within the window", async () => {
+    process.env.MWS_TAILSCALE_SSO = "1";
+    // Unique user so the static SSO-activity LRU is deterministic for this test.
+    const u = { tailscale_login: "audit@x", user_id: "u-sso-audit-" + Math.random(), username: "ssoaudit",
+      nickname: null, disabled: false, roles: [] };
+    const create = vi.fn(async () => ({}));
+    const config = {
+      engine: {
+        sessions: { findFirst: async () => null },
+        users: { findUnique: async ({ where }: any) => where.tailscale_login === u.tailscale_login ? u : null },
+        auditLog: { create },
+      },
+    } as any;
+    const streamer = { cookies: { getAll: () => [] }, headers: { "tailscale-user-login": "audit@x" } } as any;
+
+    const first = await SessionManager.parseIncomingRequest(streamer, config);
+    expect(first.isLoggedIn).toBe(true);
+    expect(create).toHaveBeenCalledTimes(1);                       // new session → audited
+    expect(create.mock.calls[0][0].data.action).toBe("sso.login");
+    expect(create.mock.calls[0][0].data.outcome).toBe("success");
+
+    const second = await SessionManager.parseIncomingRequest(streamer, config);
+    expect(second.isLoggedIn).toBe(true);
+    expect(create).toHaveBeenCalledTimes(1);                       // within window → NOT re-audited
   });
 
   it("denies a disabled mapped user", async () => {

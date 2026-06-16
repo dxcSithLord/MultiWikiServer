@@ -209,10 +209,38 @@ sequenceDiagram
   end
 ```
 
-> **Least-privilege caveat (current state):** an `isAdmin` user still **bypasses** the content
-> ACL in `getRecipeACL`/`getBagACL`, so admins can read/write every wiki today. Removing that
-> blanket bypass (so admins reach content only via role/ownership) is planned for the next batch —
-> see [`SDP.md`](SDP.md) and [`TODO.md`](TODO.md).
+> **Least privilege (current state):** the blanket `isAdmin` content bypass in
+> `getRecipeACL`/`getBagACL` has been **removed** (Batch 2) — admins reach wiki *content* only via
+> a role ACL grant or ownership, like anyone else. Admins retain *structural* administration
+> (the admin panel stays admin-sees-all); `WIKI_ADMIN` is the create/delete tier (Batch 3).
+
+### Audit & session data flow
+
+How a request is authenticated (session lifecycle + SSO) and how administrative, structural,
+and authentication events reach the append-only audit trail, as implemented in
+`services/sessions.ts` and `services/audit.ts`:
+
+```mermaid
+flowchart TD
+  Req["Incoming request"] --> PIR["parseIncomingRequest"]
+
+  PIR --> Cookie{"valid session cookie?"}
+  Cookie -- yes --> Exp{"idle &gt;30m or absolute &gt;12h?"}
+  Exp -- "expired" --> Del["delete session row"] --> Anon["anonymous"]
+  Exp -- "live" --> Refresh["refresh last_accessed (throttled &le;1/min)"] --> Authed["authenticated"]
+  Cookie -- no --> SSO{"Tailscale SSO mapped &amp; enabled?"}
+  SSO -- yes --> Dedup{"new session? (&gt;30m gap, per-user LRU)"}
+  Dedup -- "yes" --> AuditSSO["recordAudit(sso.login)"] --> Authed
+  Dedup -- "no (continuation)" --> Authed
+  SSO -- no --> Anon
+
+  Authed --> Handler["route handler (content ACL / role checks)"]
+  Anon --> Handler
+  Handler --> Events["admin / structural / auth events<br/>(login, logout, user/role, recipe/bag, ACL)"]
+  Events --> Sink["recordAudit() — writes via the ROOT engine,<br/>not the request transaction; secrets redacted; errors swallowed"]
+  Sink --> WORM[("audit_log<br/>append-only WORM: BEFORE UPDATE/DELETE triggers abort")]
+  WORM --> View["GET /admin-htmx/audit (read-only, paged, filterable)"]
+```
 
 - **Error contract** — `Streamer.catcher` honours `SendError.status`/`reason` instead of
   blanket-500ing, so an unauthorized request surfaces as `403`, not `500`.

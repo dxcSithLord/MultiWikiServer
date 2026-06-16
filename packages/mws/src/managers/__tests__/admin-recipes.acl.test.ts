@@ -8,7 +8,7 @@
  * WIKI_ADMIN, or ownership.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { RecipeManager } from "../admin-recipes";
 import { hasWikiAdmin } from "../../services/roles";
 
@@ -77,5 +77,39 @@ describe("Batch 3 — hasWikiAdmin", () => {
   });
   it("is false (not throwing) when roles is missing", () => {
     expect(hasWikiAdmin({} as any)).toBe(false);
+  });
+});
+
+// Representative manager -> audit-sink data-flow test (Batch 4a). All 14 admin/structural
+// emit points use the identical `recordAudit(state.engine, {...})` wiring; this exercises one
+// end to end (recipe_delete) through the real admin() route, confirming the row is written via
+// the ROOT engine (state.engine), not the request transaction client.
+describe("Batch 4a — manager audit emit (recipe_delete)", () => {
+  it("writes a recipe.delete audit row via state.engine", async () => {
+    const auditCreate = vi.fn(async () => ({}));
+    const txnPrisma = {
+      recipes: {
+        findUnique: async () => ({ recipe_id: "rec1", recipe_name: "docs", owner_id: null }),
+        delete: async () => ({}),
+      },
+    };
+    const state: any = {
+      headers: { referer: "http://h/admin", host: "h", origin: "http://h" }, // CSRF passes
+      pathPrefix: "",
+      data: { recipe_name: "docs" },
+      user: { isLoggedIn: true, user_id: "admin1", isAdmin: true, roles: [{ role_id: "r", role_name: "ADMIN" }] },
+      engine: { auditLog: { create: auditCreate } },           // ROOT engine (audit sink)
+      $transaction: async (cb: any) => cb(txnPrisma),           // request txn client (NOT the engine)
+      sendEmpty: (s: number, h: any) => { throw { s, h }; },
+    };
+
+    await mgr.recipe_delete.inner(state);
+
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+    const data = auditCreate.mock.calls[0][0].data;
+    expect(data.action).toBe("recipe.delete");
+    expect(data.outcome).toBe("success");
+    expect(data.target_type).toBe("recipe");
+    expect(data.target_name).toBe("docs");
   });
 });
