@@ -95,7 +95,13 @@ this server, not a part of it.
     so audit never breaks a request; no secrets/OPAQUE/session-ids/headers are stored. A read-only,
     filterable, paged admin view is served at `/admin-htmx/audit` (`audit_list` key). The session
     lifecycle (idle/absolute timeout) + SSO login de-dup follow in Batch 4b. See
-    `packages/mws/src/services/audit.ts`.
+    `packages/mws/src/services/audit.ts`. **Batch 4b — session lifecycle:** cookie sessions
+    expire on idle (30 min) and an absolute cap (12 h), enforced in `parseIncomingRequest` (the
+    expired row is deleted and the request falls through to re-authentication); `last_accessed` is
+    refreshed on use but throttled (≤ once/min); the cookie `expires` is set to the absolute cap;
+    `last_login` is written on password login; and the stateless Tailscale SSO `sso.login` audit
+    event is de-duplicated via a bounded per-user LRU (one row per > 30 min activity gap, not per
+    request). See `packages/mws/src/services/sessions.ts`.
 
 ## 3. Tools & skills
 
