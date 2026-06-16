@@ -14,9 +14,13 @@ any multi-user, multi-wiki deployment.
 Multiple users, multiple wikis for TiddlyWiki:
 
 - Bag & Recipe system for storing tiddlers (per-tiddler SQLite via Prisma).
-- User, Role and ACL management.
+- User, Role and ACL management with least-privilege tiers
+  (`READ` < `WRITE` < `WIKI_ADMIN` < `ADMIN`); admins are subject to content ACLs.
 - **OPAQUE** password authentication — no password is transmitted, nor stored as a
-  recoverable hash.
+  recoverable hash. Per-username login rate-limiting; optional Tailscale SSO.
+- **Session lifecycle** — idle (30 min) and absolute (12 h) timeouts.
+- **Audit logging** — append-only (WORM) trail of admin, structural, and auth events,
+  with a read-only admin view (`/admin-htmx/audit`).
 - HTMX admin UI — no client bundle, no build step.
 - `reset-password` CLI for account recovery.
 - OpenAPI 3.1 contract (`openapi.yaml`) covering the full HTTP surface.

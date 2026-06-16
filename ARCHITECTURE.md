@@ -138,8 +138,12 @@ sequenceDiagram
 - **`GET /admin-htmx/styles.css`** — the admin stylesheet (`styles/admin-htmx.css`), ETag-cached.
 - **`GET /admin-htmx[...]`** — the admin pages, each from a template in
   `packages/mws/src/templates/`: `recipes`, `bags`, users (`poc`), `roles`, `plugins`,
-  `settings`, wrapped by the shared `htmx-admin-frame.html`. Unauthenticated requests are
-  redirected to `/login`; non-admins get a 403.
+  `settings`, `audit`, wrapped by the shared `htmx-admin-frame.html`. Unauthenticated requests
+  are redirected to `/login`. A logged-in **non-admin** is sent to their user home page
+  (`/home`) rather than a dead-end 403; the **Recipes** and **Bags** pages additionally admit
+  the **`WIKI_ADMIN`** role. The frame is always rendered with the real `isAdmin`, so the
+  admin-only sections (Users / Roles / Settings / Audit) stay hidden and remain `isAdmin`-gated
+  at the API even for a WIKI_ADMIN.
 
 Read/write actions call the JSON admin APIs (`POST /admin/$key`,
 `packages/mws/src/managers/admin-utils.ts`), which require an `X-Requested-With` header and
@@ -154,10 +158,22 @@ Authentication uses the **OPAQUE** asymmetric PAKE (`@serenity-kit/opaque`,
   hash that the server can test offline.
 - Login is a two-message handshake (`/login/1`, `/login/2`). The plaintext password never
   leaves the browser; the server learns only that the client proved knowledge of it.
+  `/login/1` is **rate-limited** per username (in-memory throttle + lockout), and a successful
+  login writes `last_login`.
 - On success the server creates a `Sessions` row and sets a **session cookie** that is
-  `HttpOnly`, `SameSite=Strict`, and `Secure` when the connection is secure.
-- On every request, `SessionManager.parseIncomingRequest` resolves the cookie to the
-  current user (or anonymous) and attaches it as `state.user`.
+  `HttpOnly`, `SameSite=Strict`, `Secure` when the connection is secure, and whose `expires`
+  is set to the absolute session cap.
+- **Session lifecycle:** sessions expire on **idle (30 min)** and an **absolute cap (12 h)**,
+  enforced server-side in `parseIncomingRequest` — an expired row is deleted and the request
+  becomes anonymous (re-authentication required). `last_accessed` is refreshed on use but
+  throttled (≤ once/min) to avoid write amplification.
+- On every request, `SessionManager.parseIncomingRequest` resolves the cookie (applying the
+  expiry/refresh above) to the current user (or anonymous) and attaches it as `state.user`.
+- **Tailscale SSO (optional, off by default):** with `MWS_TAILSCALE_SSO=1`, a
+  `Tailscale-User-Login` header injected by Tailscale Serve is mapped to a user's
+  `tailscale_login` and authenticated **passwordlessly, per request** (no session row;
+  deny-unless-mapped). Logout sets a short-lived `mws_no_sso` marker so it sticks under SSO.
+  Safe only behind a loopback bind + Tailscale Serve + Funnel-off — see `docs/security.md`.
 
 ## 7. Storage model — bags, recipes, tiddlers
 
@@ -176,7 +192,23 @@ erDiagram
   Users   ||--o{ Sessions : "has"
   Roles   ||--o{ RecipeAcl : "grants"
   Roles   ||--o{ BagAcl : "grants"
+  AuditLog {
+    int id
+    datetime created_at
+    string actor_user_id
+    string actor_label
+    string action
+    string target_type
+    string target_id
+    string target_name
+    string outcome
+    json detail
+    string source
+  }
 ```
+
+> `AuditLog` is a standalone, **append-only** table with no foreign keys — the actor is recorded
+> as an id + label rather than a relation, so trimming users never cascades to the trail.
 
 - **Bag** — a named collection of tiddlers (the unit of storage and ACL).
 - **Recipe** — an **ordered** list of bags (`Recipe_bags.position`). Reading a recipe
@@ -186,15 +218,29 @@ erDiagram
   fields as child rows; `is_deleted` supports tombstones for sync.
 - **Users / Roles / Sessions** — accounts, role membership, and active sessions.
 - **Settings** — server key/value settings.
+- **AuditLog** — append-only trail of administrative, structural, and authentication events
+  (no FK; actor stored as id + label). Append-only is enforced in the database by `BEFORE
+  UPDATE`/`BEFORE DELETE` triggers (WORM; NIST SP 800-53 AU-9). See `docs/security.md` §audit.
 
 ## 8. Authorization (ACL)
 
 Access is **role-based**. `RecipeAcl` and `BagAcl` rows attach a `Permission`
-(`READ` | `WRITE` | `ADMIN`) to a `role_id`. A request's effective permissions are the
-union of its user's roles' grants; admins bypass per-object checks. Recipe reads can
-optionally enforce the contained bags' ACLs (`Recipe_bags.with_acl`). Helpers such as
-`getBagWhereACL` build the Prisma `where` clauses that filter bags/recipes to what the
-caller may see.
+(hierarchical `READ` < `WRITE` < `ADMIN`) to a `role_id`. A request's effective permissions
+are the union of its user's roles' grants.
+
+**Least privilege:** holding the `ADMIN` role does **not** bypass content ACLs — admins reach a
+wiki's tiddler content only via a role grant or ownership, exactly like any other user (the
+former `isAdmin` content bypass in `getRecipeACL`/`getBagACL` was removed). Admins retain
+*structural* administration through the admin panel (which stays admin-sees-all so they can
+manage and grant ACLs on every resource). A separate **`WIKI_ADMIN`** role is the
+data-management tier: it may create and delete recipes and bags without being a full site-admin,
+but gains no content-ACL bypass or owner reassignment. So the tiers are
+**READ** (download) < **WRITE** (server-side edit) < **`WIKI_ADMIN`** (structure) <
+**`ADMIN`** (system administration).
+
+Recipe reads can optionally enforce the contained bags' ACLs (`Recipe_bags.with_acl`). Helpers
+such as `getBagWhereACL` build the Prisma `where` clauses that filter bags/recipes to what the
+caller may see. See `docs/security.md` for the full model.
 
 ## 9. Security posture
 
@@ -203,6 +249,16 @@ Aligned with the workspace standards (NIST/OWASP, defensive coding):
 - **OPAQUE auth** — no plaintext password transmission; no server-side password hash to
   exfiltrate.
 - **Session cookies** — `HttpOnly`, `SameSite=Strict`, `Secure` on secure transports.
+- **Session lifecycle** — idle (30 min) + absolute (12 h) expiry enforced server-side; throttled
+  `last_accessed`; `last_login` recorded.
+- **Login rate-limiting** — per-username throttle + lockout on `/login/1` (in-memory, bounded).
+- **Content least privilege** — `ADMIN` membership does not bypass content ACLs; structure is
+  gated to the `WIKI_ADMIN` tier (admins/owners), so role/ownership governs all content access.
+- **Audit logging (WORM)** — administrative, structural, and authentication events are written to
+  an **append-only** `audit_log` (DB triggers abort `UPDATE`/`DELETE`; NIST SP 800-53 AU-9),
+  with a read-only admin view at `/admin-htmx/audit`. Secrets are redacted at the sink.
+- **Tailscale SSO (optional)** — opt-in passwordless identity-header auth, safe only behind a
+  loopback bind + Tailscale Serve + Funnel-off.
 - **CSRF** — admin APIs require `X-Requested-With` plus a same-origin `referer`.
 - **Open-redirect guard** — the login `redirect` parameter accepts only same-origin
   single-slash paths.
