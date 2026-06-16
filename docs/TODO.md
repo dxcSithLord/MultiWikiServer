@@ -90,6 +90,17 @@ these are polish, not correctness):
     - [ ] **4b — session lifecycle:** cookie `Max-Age`; throttled `last_accessed` refresh; idle
           30 min / absolute 12 h expiry; write `last_login`; SSO login de-dup (bounded LRU, 30-min
           window) + `sso.login` audit emit. Changes live login behaviour → own review/deploy.
+    - [ ] **4c — audit-log archival / forwarding (future):** a separate, internal process running
+          *on the same machine as the MWS service*, with permission to archive the `audit_log`,
+          that periodically (e.g. daily/weekly) extracts that window's entries, produces a summary
+          of the events, and ships them to a **configurable destination**. The destination must be
+          pluggable — from a local filesystem archive directory up to (but not limited to) a remote
+          **syslog** service over the network (so it can feed a SIEM / central log host). Pairs
+          with the append-only WORM `audit_log` (the DB enforces immutability; this handles
+          off-box retention, summarisation, and forwarding, and is the sanctioned path for the
+          drop-trigger→prune→recreate retention cycle in `operations.md §8`). Decide:
+          run-mode (cron vs long-running sidecar), config surface (env/`dev/mws.dev.json`),
+          summary format, and whether MWS emits directly or the external process reads the table.
   - [x] **Batch 5 — DONE (PR #19 / issue #18):** user home page (`/home`) listing the wikis a
         user can reach (reference wikis open in a new tab), with a working logout and a manage-wikis
         link when permitted; root dispatch by role (anon→login, admin→admin, user→/home); logout
