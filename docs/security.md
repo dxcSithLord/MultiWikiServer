@@ -138,8 +138,16 @@ satisfies all of them.
   outcome (success/denied/error), optional target, and a small non-sensitive `detail` bag —
   **never** passwords, OPAQUE material, session ids/keys, or raw headers. Admins read the trail
   (newest first, filterable, paged) at the read-only **Audit log** page (`/admin-htmx/audit`,
-  `audit_list` key); viewing it is not itself audited. (Session-lifecycle auditing — SSO login
-  de-dup — lands with the session-timeout work in Batch 4b.)
+  `audit_list` key); viewing it is not itself audited.
+- **Session lifecycle** — cookie sessions expire on **idle (30 min)** and an **absolute cap
+  (12 h)**, whichever comes first, enforced server-side in `parseIncomingRequest`: an expired
+  session row is deleted and the request falls through to anonymous (re-authentication required).
+  `last_accessed` is refreshed on use but **throttled** (≤ once/min) to avoid write amplification;
+  the session cookie's `expires` is set to the absolute cap; `last_login` is written on a
+  successful password login. Tailscale SSO is stateless (re-validated per request), so an
+  `sso.login` audit event is **de-duplicated** via a bounded per-user LRU — only the first request
+  after a > 30 min activity gap is logged as a new session, so a page-refresh storm does not flood
+  the trail. See `packages/mws/src/services/sessions.ts`.
 - **Access-management UI** — admins set, change, and remove role→permission grants from the
   **Recipes** and **Bags** edit modals ("Access (roles)" section), wired to the existing
   `recipe_acl_update` / `bag_acl_update` admin keys (full-replace semantics). Previously these

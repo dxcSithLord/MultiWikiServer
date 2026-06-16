@@ -115,8 +115,12 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
         sessions: {
           findFirst: async () => ({
             session_id: "sess-1",
+            created_at: new Date(),
+            last_accessed: new Date(),
             user: { user_id: "u-cookie", username: "cookieuser", nickname: null, disabled: false, roles: [] },
           }),
+          update: async () => ({}),
+          delete: async () => ({}),
         },
         users: { findUnique: async () => alice }, // would match, but the cookie must win
       },
@@ -148,8 +152,12 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
         sessions: {
           findFirst: async () => ({
             session_id: "sess-1",
+            created_at: new Date(),
+            last_accessed: new Date(),
             user: { user_id: "u-cookie", username: "cookieuser", nickname: null, disabled: false, roles: [] },
           }),
+          update: async () => ({}),
+          delete: async () => ({}),
         },
         users: { findUnique: async () => alice },
       },
@@ -157,5 +165,58 @@ describe("SessionManager.parseIncomingRequest — Tailscale SSO", () => {
     const u = await SessionManager.parseIncomingRequest(streamer, config);
     expect(u.isLoggedIn).toBe(true);
     expect(u.username).toBe("cookieuser");
+  });
+
+  it("expires an idle session and deletes it (falls through to anonymous)", async () => {
+    delete process.env.MWS_TAILSCALE_SSO; // no SSO fallback — expect anonymous
+    const now = Date.now();
+    let deleted = false;
+    const streamer = { cookies: { getAll: (n: string) => n === "session" ? ["sess-old"] : [] }, headers: {} } as any;
+    const config = {
+      engine: {
+        sessions: {
+          findFirst: async () => ({
+            session_id: "sess-old",
+            created_at: new Date(now - 60_000),                                  // fresh-ish
+            last_accessed: new Date(now - SessionManager.SESSION_IDLE_MS - 1000), // idle past 30 min
+            user: { user_id: "u1", username: "alice", nickname: null, disabled: false, roles: [] },
+          }),
+          update: async () => ({}),
+          delete: async ({ where }: any) => { if (where.session_id === "sess-old") deleted = true; return {}; },
+        },
+      },
+    } as any;
+    const u = await SessionManager.parseIncomingRequest(streamer, config);
+    expect(u.isLoggedIn).toBe(false);
+    expect(deleted).toBe(true);
+  });
+});
+
+describe("SessionManager.isSessionExpired", () => {
+  const now = 1_000_000_000_000;
+  it("is false for a fresh session", () => {
+    expect(SessionManager.isSessionExpired(new Date(now), new Date(now), now)).toBe(false);
+  });
+  it("is true past the idle window", () => {
+    const created = new Date(now - 60_000);
+    const accessed = new Date(now - SessionManager.SESSION_IDLE_MS - 1);
+    expect(SessionManager.isSessionExpired(created, accessed, now)).toBe(true);
+  });
+  it("is true past the absolute cap even if recently accessed", () => {
+    const created = new Date(now - SessionManager.SESSION_ABSOLUTE_MS - 1);
+    expect(SessionManager.isSessionExpired(created, new Date(now), now)).toBe(true);
+  });
+});
+
+describe("SessionManager.touchSsoActivity", () => {
+  it("treats the first request and a post-gap request as new, but not within the sliding window", () => {
+    const uid = "sso-user-" + Math.random();
+    const t0 = 5_000_000;
+    const W = SessionManager.SSO_LOGIN_WINDOW_MS;
+    expect(SessionManager.touchSsoActivity(uid, t0)).toBe(true);            // first → new
+    expect(SessionManager.touchSsoActivity(uid, t0 + 1000)).toBe(false);    // within window → continuation
+    // Sliding window: each touch resets the clock, so "new" needs a gap > window
+    // since the LAST activity (t0 + 1000), not since the first.
+    expect(SessionManager.touchSsoActivity(uid, t0 + 1000 + W + 1)).toBe(true);
   });
 });

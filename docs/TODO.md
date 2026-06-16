@@ -87,9 +87,13 @@ these are polish, not correctness):
           rolled-back action; read-only filterable paged view `/admin-htmx/audit` (`audit_list`
           key) + OpenAPI. No secrets/OPAQUE/session-ids/headers stored. Docs: `security.md`,
           `operations.md §8`, `SDP.md`.
-    - [ ] **4b — session lifecycle:** cookie `Max-Age`; throttled `last_accessed` refresh; idle
-          30 min / absolute 12 h expiry; write `last_login`; SSO login de-dup (bounded LRU, 30-min
-          window) + `sso.login` audit emit. Changes live login behaviour → own review/deploy.
+    - [x] **4b — session lifecycle (DONE):** cookie `expires` set to the absolute cap; throttled
+          `last_accessed` refresh (≤ once/min); **idle 30 min / absolute 12 h** expiry enforced in
+          `parseIncomingRequest` (expired row deleted → re-auth); `last_login` written on password
+          login; SSO `sso.login` de-dup via bounded per-user LRU (one row per > 30 min activity
+          gap). Pure helpers `isSessionExpired` / `touchSsoActivity` unit-tested. **Changes live
+          login behaviour** (users re-auth after idle/absolute timeout) → deploy = restart. Docs:
+          `security.md`, `SDP.md`.
     - [ ] **4c — audit-log archival / forwarding (future):** a separate, internal process running
           *on the same machine as the MWS service*, with permission to archive the `audit_log`,
           that periodically (e.g. daily/weekly) extracts that window's entries, produces a summary

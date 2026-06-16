@@ -162,27 +162,80 @@ export class SessionManager {
     }
   }
 
+  // ── Session lifecycle (Batch 4b) ─────────────────────────────────────────
+  // Cookie sessions expire on BOTH an idle window (no use for 30 min) and an
+  // absolute cap (12 h since creation), whichever comes first. `last_accessed` is
+  // refreshed on use, but throttled so a burst of requests is not a write storm.
+  static readonly SESSION_IDLE_MS = 30 * 60_000;          // 30 minutes idle
+  static readonly SESSION_ABSOLUTE_MS = 12 * 60 * 60_000; // 12 hours absolute
+  static readonly SESSION_ACCESS_REFRESH_MS = 60_000;     // refresh last_accessed at most once/min
+
+  /** Pure expiry decision (idle OR absolute). */
+  static isSessionExpired(created_at: Date, last_accessed: Date, now: number = Date.now()): boolean {
+    return (now - created_at.getTime() > SessionManager.SESSION_ABSOLUTE_MS)
+      || (now - last_accessed.getTime() > SessionManager.SESSION_IDLE_MS);
+  }
+
+  // ── SSO login de-duplication (Batch 4b) ──────────────────────────────────
+  // SSO is stateless (re-validated per request), so without de-dup every page
+  // refresh would log a `sso.login`. Track the last-seen time per user in a
+  // bounded LRU and only treat a request as a NEW login (worth auditing) when no
+  // activity has been seen within the window. Mirrors the rate-limit LRU.
+  private static ssoActivity = new Map<string, number>();
+  static readonly SSO_LOGIN_WINDOW_MS = 30 * 60_000;
+  static readonly SSO_MAX_TRACKED = 5000;
+
+  /** Records SSO activity for a user; returns true if this starts a NEW session window. */
+  static touchSsoActivity(user_id: string, now: number = Date.now()): boolean {
+    const last = SessionManager.ssoActivity.get(user_id);
+    const isNew = last === undefined || (now - last) > SessionManager.SSO_LOGIN_WINDOW_MS;
+    // LRU touch: re-insert moves the key to the newest position.
+    SessionManager.ssoActivity.delete(user_id);
+    SessionManager.ssoActivity.set(user_id, now);
+    if (SessionManager.ssoActivity.size > SessionManager.SSO_MAX_TRACKED) {
+      const oldest = SessionManager.ssoActivity.keys().next().value;
+      if (oldest !== undefined) SessionManager.ssoActivity.delete(oldest);
+    }
+    return isNew;
+  }
+
   static async parseIncomingRequest(streamer: Streamer, config: ServerState): Promise<AuthUser> {
 
     const sessionId = streamer.cookies.getAll("session") as PrismaField<"Sessions", "session_id">[];
     const session = sessionId && await config.engine.sessions.findFirst({
       where: { session_id: { in: sessionId } },
-      select: { session_id: true, user: { select: { user_id: true, username: true, nickname: true, disabled: true, roles: { select: { role_id: true, role_name: true } } } } }
+      select: { session_id: true, created_at: true, last_accessed: true, user: { select: { user_id: true, username: true, nickname: true, disabled: true, roles: { select: { role_id: true, role_name: true } } } } }
     });
 
     // A disabled user is treated as logged out (their session no longer authenticates).
-    if (sessionId && session && !session.user.disabled) return {
-      user_id: session.user.user_id,
-      username: session.user.username,
-      nickname: session.user.nickname,
-      isAdmin: session.user.roles.some(e => e.role_name === "ADMIN"),
-      roles: session.user.roles.map(e => ({
-        role_id: e.role_id,
-        role_name: e.role_name
-      })),
-      sessionId: session.session_id,
-      isLoggedIn: true,
-    };
+    if (sessionId && session && !session.user.disabled) {
+      const now = Date.now();
+      if (SessionManager.isSessionExpired(session.created_at, session.last_accessed, now)) {
+        // Idle (30 min) or absolute (12 h) timeout: drop the row and fall through
+        // to SSO/anonymous so the user must re-authenticate.
+        await config.engine.sessions.delete({ where: { session_id: session.session_id } }).catch(() => { });
+      } else {
+        // Sliding idle window: refresh last_accessed, throttled to avoid a write per request.
+        if (now - session.last_accessed.getTime() > SessionManager.SESSION_ACCESS_REFRESH_MS) {
+          await config.engine.sessions.update({
+            where: { session_id: session.session_id },
+            data: { last_accessed: new Date(now) },
+          }).catch(() => { });
+        }
+        return {
+          user_id: session.user.user_id,
+          username: session.user.username,
+          nickname: session.user.nickname,
+          isAdmin: session.user.roles.some(e => e.role_name === "ADMIN"),
+          roles: session.user.roles.map(e => ({
+            role_id: e.role_id,
+            role_name: e.role_name
+          })),
+          sessionId: session.session_id,
+          isLoggedIn: true,
+        };
+      }
+    }
 
     // No valid session cookie — try opt-in Tailscale SSO before treating as anonymous,
     // UNLESS the user just logged out: the short-lived `mws_no_sso` cookie (set by
@@ -230,6 +283,16 @@ export class SessionManager {
       select: { user_id: true, username: true, nickname: true, disabled: true, roles: { select: { role_id: true, role_name: true } } }
     });
     if (!u || u.disabled) return null;
+
+    // Audit a NEW SSO session only (de-duped over a 30-min window) so a page-refresh
+    // storm doesn't write a row per request. Best-effort via the root engine.
+    if (SessionManager.touchSsoActivity(u.user_id)) {
+      await recordAudit(config.engine, {
+        action: "sso.login", outcome: "success",
+        actor_user_id: u.user_id, actor_label: u.username,
+        detail: { method: "tailscale" },
+      });
+    }
 
     return {
       user_id: u.user_id,
@@ -331,18 +394,27 @@ export class SessionManager {
 
     const session_id = await createSession(prisma, value.user_id, value.session.sessionKey);
 
+    // Record the successful login time (Batch 4b: session lifecycle).
+    await prisma.users.update({
+      where: { user_id: value.user_id },
+      data: { last_login: new Date() },
+    });
+
     await recordAudit(state.engine, {
       action: "login.success", outcome: "success",
       actor_user_id: value.user_id, actor_label: account.username,
     });
 
     if (!skipCookie) {
-      // the client can ask to skip the cookie for things like password change
+      // the client can ask to skip the cookie for things like password change.
+      // `expires` caps the cookie at the absolute session lifetime (12 h); the
+      // server still enforces idle + absolute expiry independently (parseIncomingRequest).
       state.setCookie("session", session_id, {
         httpOnly: true,
         path: state.pathPrefix + "/",
         secure: state.expectSecure,
-        sameSite: "Strict"
+        sameSite: "Strict",
+        expires: new Date(Date.now() + SessionManager.SESSION_ABSOLUTE_MS),
       });
       // Clear any SSO-suppress marker left by a previous logout, so SSO resumes
       // normally once this password session ends.
