@@ -67,9 +67,15 @@ these are polish, not correctness):
         - [x] Seed `USER → READ` on the four standard reference wikis (`docs`/`mws-docs`/`dev-docs`/
           `tour`) at `init-store` so fresh installs get it out of the box (idempotent, additive-only;
           reuses `REFERENCE_RECIPES`). Live store was already backfilled manually via the ACL editor.
-  - [ ] **Batch 3 — `WIKI_ADMIN` tier:** gate recipe/bag create/delete behind
-        `isAdmin || WIKI_ADMIN || owner` (today any logged-in user can create); document READ =
-        download, WRITE = edit, WIKI_ADMIN = structure/data management.
+  - [x] **Batch 3 — `WIKI_ADMIN` tier (DONE):** create/delete of recipes & bags gated behind
+        `isAdmin || WIKI_ADMIN || owner` (was: any logged-in user); `WIKI_ADMIN` role seeded at
+        `init-store`; WIKI_ADMINs admitted to the Recipes/Bags admin pages (frame `isAdmin` stays
+        real → Users/Roles/Settings hidden + API-gated); `/home` manage-link shows for
+        `isAdmin || WIKI_ADMIN`. No content-ACL bypass / owner reassignment for WIKI_ADMIN (those
+        stay `isAdmin`-only). Tier documented READ = download, WRITE = edit, WIKI_ADMIN =
+        structure/data management. New `services/roles.ts` helper; tests in
+        `admin-recipes.acl.test.ts`. No schema change → deploy = restart. Existing deployments
+        create the `WIKI_ADMIN` role via the admin Roles UI.
   - [ ] **Batch 4 — audit + sessions:** `AuditLog` table + read-only admin view (`audit_list`);
         emit points across user/role/recipe/bag/login; cookie idle/absolute timeout; SSO login
         de-dup. **Update `security.md` audit/session section + `SDP.md`.**

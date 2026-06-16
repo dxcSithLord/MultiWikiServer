@@ -1,6 +1,7 @@
 import { registerZodRoutes, RouterKeyMap, RouterRouteMap, ServerRequest, ServerRoute } from "@tiddlywiki/server";
 import { admin } from "./admin-utils";
 import { serverEvents } from "@tiddlywiki/events";
+import { hasWikiAdmin } from "../services/roles";
 
 
 serverEvents.on("mws.routes", (root) => {
@@ -172,6 +173,10 @@ export class RecipeManager {
       throw "User not authenticated";
 
     const { isAdmin, user_id } = user;
+    // Structure (create/delete/restructure) is the WIKI_ADMIN tier; site-admins
+    // are always permitted. Least privilege: this does NOT grant content access
+    // or owner reassignment, which remain `isAdmin`-only below and elsewhere.
+    const isStructureAdmin = isAdmin || hasWikiAdmin(user);
 
     if (!isAdmin && owner_id !== undefined)
       throw "owner_id is only valid for admins";
@@ -179,7 +184,14 @@ export class RecipeManager {
     if (existing && isCreate)
       throw `A ${type} with this name already exists`;
 
-    if (existing && !isAdmin && existing.owner_id !== user_id)
+    // Creating a NEW recipe/bag is a structural operation. Previously any
+    // logged-in user could create; now it requires the WIKI_ADMIN role (or
+    // site-admin). `!existing` covers both create_only and the upsert path.
+    if (!existing && !isStructureAdmin)
+      throw `Creating a ${type} requires the WIKI_ADMIN role`;
+
+    // Editing an existing recipe/bag: site-admin, WIKI_ADMIN, or the owner.
+    if (existing && !isStructureAdmin && existing.owner_id !== user_id)
       throw `User does not own the ${type} and is not an admin`;
 
   }
@@ -199,7 +211,8 @@ export class RecipeManager {
 
     const { isAdmin, user_id } = state.user;
 
-    if (!isAdmin && recipe.owner_id !== user_id)
+    // Deleting is a structural operation: site-admin, WIKI_ADMIN, or the owner.
+    if (!isAdmin && !hasWikiAdmin(state.user) && recipe.owner_id !== user_id)
       throw "User does not own the recipe and is not an admin";
 
     await prisma.recipes.delete({
@@ -225,7 +238,8 @@ export class RecipeManager {
 
     const { isAdmin, user_id } = state.user;
 
-    if (!isAdmin && bag.owner_id !== user_id)
+    // Deleting is a structural operation: site-admin, WIKI_ADMIN, or the owner.
+    if (!isAdmin && !hasWikiAdmin(state.user) && bag.owner_id !== user_id)
       throw "User does not own the bag and is not an admin";
 
     if (bag._count.tiddlers)
