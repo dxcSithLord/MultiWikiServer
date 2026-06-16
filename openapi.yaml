@@ -1202,7 +1202,7 @@ components:
         target_id: { type: [string, 'null'] }
         target_name: { type: [string, 'null'] }
         outcome: { type: string, enum: [success, denied, error] }
-        detail: { type: object, additionalProperties: true, description: Small non-sensitive context bag; null when absent. }
+        detail: { type: [object, 'null'], additionalProperties: true, description: Small non-sensitive context bag (null when absent) }
         source: { type: [string, 'null'] }
     SettingItem:
       type: object

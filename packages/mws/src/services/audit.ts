@@ -47,22 +47,37 @@ export function actorLabel(user?: Pick<AuthUser, "isLoggedIn" | "username" | "us
   return clip(user.username || (user.user_id ? `user:${user.user_id}` : "anon"));
 }
 
-/** Keys whose VALUE must never be persisted, matched case-insensitively as a substring. */
-const SENSITIVE_KEY = /pass|secret|token|session_?key|session_?id|signature|credential|cookie|authorization|registration/i;
+/**
+ * Keys whose VALUE must never be persisted, matched case-insensitively as a substring.
+ * Covers passwords, secrets/tokens, OPAQUE material, session ids/keys, signatures,
+ * credentials, and raw-header families (authorization/bearer/cookie/api-key).
+ */
+const SENSITIVE_KEY = /pass|secret|token|opaque|session_?key|session_?id|signature|credential|cookie|authorization|bearer|api[_-]?key|registration|header/i;
 const REDACTED = "[redacted]";
+
+/** Recursively mask the values of sensitive keys at any depth (objects + arrays). */
+function redactValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = SENSITIVE_KEY.test(k) ? REDACTED : redactValue(v);
+    }
+    return out;
+  }
+  return value;
+}
 
 /**
  * Defence-in-depth: redact sensitive values from a detail bag at the sink, so a
- * careless caller can never leak a secret into the audit log. Returns a new object
- * with matching keys' values replaced by "[redacted]"; non-matching values are kept.
+ * careless caller can never leak a secret into the audit log. Returns a new
+ * structure with matching keys' values replaced by "[redacted]" at every level
+ * (the declared type is a flat scalar map, but this stays robust if a caller
+ * passes nested objects/arrays via `any`); non-matching values are kept.
  */
 export function redactDetail(detail?: PrismaJson.AuditLog_detail): PrismaJson.AuditLog_detail | undefined {
   if (!detail || typeof detail !== "object") return detail;
-  const out: PrismaJson.AuditLog_detail = {};
-  for (const [k, v] of Object.entries(detail)) {
-    out[k] = SENSITIVE_KEY.test(k) ? REDACTED : v;
-  }
-  return out;
+  return redactValue(detail) as PrismaJson.AuditLog_detail;
 }
 
 /** The single audit sink. Writes one row; swallows errors so it never breaks the request. */

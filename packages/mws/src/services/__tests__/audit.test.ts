@@ -48,17 +48,24 @@ describe("Batch 4 — recordAudit", () => {
       action: "user.update", outcome: "success", actor_label: "admin",
       detail: {
         password: "hunter2", session_key: "abc", token: "t", signature: "sig",
-        Authorization: "Bearer x", cookie: "c", registrationRecord: "r",
+        Authorization: "Bearer x", cookie: "c", registrationRecord: "r", opaque_blob: "o",
         roles: 2, reason: "ok",
-      },
+        // nested object + array must also be scrubbed (defence-in-depth)
+        nested: { api_key: "k", note: "fine" } as any,
+        list: [{ access_token: "z" }] as any,
+      } as any,
     });
     const detail = create.mock.calls[0][0].data.detail;
-    // sensitive values masked...
-    for (const k of ["password", "session_key", "token", "signature", "Authorization", "cookie", "registrationRecord"])
+    // sensitive top-level values masked...
+    for (const k of ["password", "session_key", "token", "signature", "Authorization", "cookie", "registrationRecord", "opaque_blob"])
       expect(detail[k]).toBe("[redacted]");
-    // ...non-sensitive values preserved
+    // ...non-sensitive values preserved...
     expect(detail.roles).toBe(2);
     expect(detail.reason).toBe("ok");
+    // ...and nested secrets masked at any depth
+    expect(detail.nested.api_key).toBe("[redacted]");
+    expect(detail.nested.note).toBe("fine");
+    expect(detail.list[0].access_token).toBe("[redacted]");
   });
 
   it("clips an over-long actor_label", async () => {
