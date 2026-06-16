@@ -79,13 +79,15 @@ this server, not a part of it.
     access. The initial `admin` user is created with both `ADMIN` and `USER` roles so it reads the
     default wikis via the seeded grants; `role_create` enforces a soft cap of 20 roles. See
     `docs/security.md` and `packages/mws/src/RequestState.ts`. **Batch 3 — `WIKI_ADMIN`
-    data-management tier:** creating/deleting recipes and bags now requires `ADMIN` or the new
-    `WIKI_ADMIN` role (previously any logged-in user could create), inserting a structural tier
-    into the model — **READ < WRITE < `WIKI_ADMIN` < `ADMIN`**. A `WIKI_ADMIN` may use the Recipes
-    and Bags admin pages (frame rendered with the real `isAdmin`, so Users/Roles/Settings stay
-    hidden and API-gated) but gets no content-ACL bypass or owner reassignment. The role is seeded
-    by `init-store` for fresh installs. See `packages/mws/src/services/roles.ts` and
-    `packages/mws/src/managers/admin-recipes.ts`.
+    data-management tier:** **creating** a recipe/bag now requires `ADMIN` or the new `WIKI_ADMIN`
+    role (previously any logged-in user; a new resource has no owner); **editing/deleting** an
+    existing one also allows its owner. This inserts a structural tier into the model —
+    **READ < WRITE < `WIKI_ADMIN` < `ADMIN`**. A `WIKI_ADMIN` may use the Recipes and Bags admin
+    pages (frame rendered with the real `isAdmin`, so Users/Roles/Settings stay hidden and
+    API-gated) but gets no content-ACL bypass or owner reassignment. The role name is defined once
+    as the `WIKI_ADMIN_ROLE` constant in `packages/mws/src/services/roles.ts` (imported by both the
+    `init-store` seed and the authorization checks); the role is seeded by `init-store` for fresh
+    installs. See `packages/mws/src/services/roles.ts` and `packages/mws/src/managers/admin-recipes.ts`.
 
 ## 3. Tools & skills
 

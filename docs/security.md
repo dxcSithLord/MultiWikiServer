@@ -116,7 +116,9 @@ satisfies all of them.
   Settings sections stay hidden and remain `isAdmin`-gated at the API. Holding `WIKI_ADMIN`
   grants **no** content-ACL bypass and **no** owner reassignment — those stay `isAdmin`-only
   (least privilege). The role is seeded on fresh installs by `init-store`; existing deployments
-  add it via the admin Roles UI. See `packages/mws/src/services/roles.ts`,
+  add it via the admin Roles UI. The role name is defined once as the `WIKI_ADMIN_ROLE` constant
+  (value `"WIKI_ADMIN"`) in `packages/mws/src/services/roles.ts`, which the seed and the
+  authorization checks both import. See `packages/mws/src/services/roles.ts`,
   `packages/mws/src/managers/admin-recipes.ts`, and `packages/mws/src/managers/admin-htmx.ts`.
 - **Role-count soft cap** — `role_create` refuses to create more than `ROLE_SOFT_CAP` (20) roles,
   a guard against accidental role sprawl (no DB constraint; trivially raised in code). See
