@@ -67,9 +67,18 @@ these are polish, not correctness):
         - [x] Seed `USER → READ` on the four standard reference wikis (`docs`/`mws-docs`/`dev-docs`/
           `tour`) at `init-store` so fresh installs get it out of the box (idempotent, additive-only;
           reuses `REFERENCE_RECIPES`). Live store was already backfilled manually via the ACL editor.
-  - [ ] **Batch 3 — `WIKI_ADMIN` tier:** gate recipe/bag create/delete behind
-        `isAdmin || WIKI_ADMIN || owner` (today any logged-in user can create); document READ =
-        download, WRITE = edit, WIKI_ADMIN = structure/data management.
+  - [x] **Batch 3 — `WIKI_ADMIN` tier (DONE):** **creating** a recipe/bag now requires
+        `isAdmin || WIKI_ADMIN` (was: any logged-in user — a new resource has no owner);
+        **editing/deleting** an existing one requires `isAdmin || WIKI_ADMIN || owner`. `WIKI_ADMIN` role seeded at
+        `init-store`; WIKI_ADMINs admitted to the Recipes/Bags admin pages (frame `isAdmin` stays
+        real → Users/Roles/Settings hidden + API-gated); `/home` manage-link shows for
+        `isAdmin || WIKI_ADMIN`. No content-ACL bypass / owner reassignment for WIKI_ADMIN (those
+        stay `isAdmin`-only). Tier documented READ = download, WRITE = edit, WIKI_ADMIN =
+        structure/data management. New `services/roles.ts` defines the canonical role name as the
+        `WIKI_ADMIN_ROLE` constant (value `"WIKI_ADMIN"`) plus the `hasWikiAdmin` helper — used by
+        both the `init-store` seed and the authorization checks so the name has a single source of
+        truth. Tests in `admin-recipes.acl.test.ts`. No schema change → deploy = restart. Existing
+        deployments create the `WIKI_ADMIN` role via the admin Roles UI.
   - [ ] **Batch 4 — audit + sessions:** `AuditLog` table + read-only admin view (`audit_list`);
         emit points across user/role/recipe/bag/login; cookie idle/absolute timeout; SSO login
         de-dup. **Update `security.md` audit/session section + `SDP.md`.**

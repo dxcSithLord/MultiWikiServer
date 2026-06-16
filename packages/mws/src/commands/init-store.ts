@@ -4,6 +4,7 @@ import { resolve } from "path";
 import { randomInt } from "crypto";
 import { Command as LoadWikiFolderCommand } from "./load-wiki-folder";
 import { REFERENCE_RECIPES } from "../services/reference-recipes";
+import { WIKI_ADMIN_ROLE } from "../services/roles";
 
 export const info: CommandInfo = {
 	name: "init-store",
@@ -53,6 +54,11 @@ export class Command extends BaseCommand {
 					data: [
 						{ role_name: "ADMIN", description: "System Administrator" },
 						{ role_name: "USER", description: "Basic User" },
+						// Wiki data-management tier (access-model Batch 3): may create and
+						// delete recipes/bags WITHOUT site-admin content access. See
+						// services/roles.ts. Existing deployments add this role via the
+						// admin Users/Roles UI; init-store seeds it for fresh installs.
+						{ role_name: WIKI_ADMIN_ROLE, description: "Wiki data management" },
 					]
 				});
 

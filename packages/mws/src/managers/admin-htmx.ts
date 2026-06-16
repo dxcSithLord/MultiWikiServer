@@ -4,6 +4,7 @@ import { ServerRoute, dist_resolve, dist_require_resolve, ServerRequest } from "
 import { serverEvents } from "@tiddlywiki/events";
 import { createHash } from "crypto";
 import { REFERENCE_RECIPES } from "../services/reference-recipes";
+import { hasWikiAdmin } from "../services/roles";
 
 declare module "@tiddlywiki/events" {
   interface ServerEventsMap {
@@ -192,8 +193,9 @@ export class HtmxAdminManager {
    */
   private static renderUserHome(state: ServerRequest, recipeNames: string[]) {
     const prefix = state.pathPrefix;
-    // Manage-wikis is admin-only today; Batch 3 extends this to WIKI_ADMIN.
-    const canManage = state.user.isAdmin;
+    // Manage-wikis is for the structural tier: site-admins and WIKI_ADMINs
+    // (the latter can create/delete recipes & bags from the admin panel).
+    const canManage = state.user.isAdmin || hasWikiAdmin(state.user);
 
     const list = recipeNames.map(name => {
       const ref = REFERENCE_RECIPES.has(name);
@@ -445,11 +447,13 @@ export class HtmxAdminManager {
           }, Buffer.from("Redirecting to login...", "utf-8"));
         }
 
-        // Non-admins do not get the admin Recipes page; send them to their user
-        // home page, which lists the wikis they can reach (and a logout). The
-        // front door (GET /) and the catch-all fallback also route non-admins to
-        // /home, so /home is the single non-admin landing.
-        if (!state.user.isAdmin) {
+        // Site-admins and WIKI_ADMINs get the structural Recipes page; everyone
+        // else is sent to their user home page, which lists the wikis they can
+        // reach (and a logout). The frame is rendered with the real `isAdmin`
+        // below, so a WIKI_ADMIN sees Recipes/Bags but NOT the admin-only Users/
+        // Roles/Settings nav. The front door (GET /) and the catch-all fallback
+        // also route plain users to /home, so /home is the single user landing.
+        if (!state.user.isAdmin && !hasWikiAdmin(state.user)) {
           return state.sendBuffer(302, {
             "location": `${state.pathPrefix}/home`,
           }, Buffer.from("Redirecting to home...", "utf-8"));
@@ -493,7 +497,8 @@ export class HtmxAdminManager {
           }, Buffer.from("Redirecting to login...", "utf-8"));
         }
 
-        if (!state.user.isAdmin) {
+        // Bags are structural: site-admins and WIKI_ADMINs may manage them.
+        if (!state.user.isAdmin && !hasWikiAdmin(state.user)) {
           await serverEvents.emitAsync("admin.htmx.page.forbidden", state, state.user.username || "unknown");
           return HtmxAdminManager.send403(state);
         }

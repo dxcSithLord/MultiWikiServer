@@ -105,6 +105,21 @@ satisfies all of them.
   `init-store` is given the `USER` role in addition to `ADMIN`, so it reads the default reference
   wikis through the seeded `USER → READ` grants rather than any bypass. See
   `packages/mws/src/RequestState.ts` and `packages/mws/src/commands/init-store.ts`.
+- **`WIKI_ADMIN` data-management tier** — a middle authorization tier between content
+  permissions and site administration. The full model is:
+  **READ** (download / local use) < **WRITE** (server-side content edit) < **`WIKI_ADMIN`**
+  (structure: create & delete recipes and bags) < **`ADMIN`** (system administration: users,
+  roles, every ACL, owner reassignment). Creating a recipe or bag previously required only a
+  logged-in session; it now requires `ADMIN` or `WIKI_ADMIN` (or, for editing/deleting an
+  existing resource, ownership). A `WIKI_ADMIN` reaches the Recipes and Bags admin pages to do
+  this, but the admin frame is rendered with the real `isAdmin` flag, so the Users / Roles /
+  Settings sections stay hidden and remain `isAdmin`-gated at the API. Holding `WIKI_ADMIN`
+  grants **no** content-ACL bypass and **no** owner reassignment — those stay `isAdmin`-only
+  (least privilege). The role is seeded on fresh installs by `init-store`; existing deployments
+  add it via the admin Roles UI. The role name is defined once as the `WIKI_ADMIN_ROLE` constant
+  (value `"WIKI_ADMIN"`) in `packages/mws/src/services/roles.ts`, which the seed and the
+  authorization checks both import. See `packages/mws/src/services/roles.ts`,
+  `packages/mws/src/managers/admin-recipes.ts`, and `packages/mws/src/managers/admin-htmx.ts`.
 - **Role-count soft cap** — `role_create` refuses to create more than `ROLE_SOFT_CAP` (20) roles,
   a guard against accidental role sprawl (no DB constraint; trivially raised in code). See
   `packages/mws/src/managers/admin-users.ts`.
